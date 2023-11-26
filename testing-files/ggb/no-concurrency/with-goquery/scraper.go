@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
+	"encoding/csv"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -37,11 +39,28 @@ func main() {
 	// Converte a página html para structs
 	document, err := goquery.NewDocumentFromReader(response.Body)
 	checkError(err)
-
-	// Se o método Find encontrar um conjunto de elementos, o .Html() retorna o HTML do primeiro elemento desse conjunto
-	river, err := document.Find("div.river").Html()
+	
+	file, err := os.Create("posts.csv")
 	checkError(err)
+	writer := csv.NewWriter(file)
+	// Se o método Find encontrar um conjunto de elementos, o .Each() itera sobre os objetos selecionados e executa um função para cada elemento
+	document.Find("div.river").Find("div.post-block").Each(func(index int, item *goquery.Selection){
+		h2 := item.Find("h2")
+		title := strings.TrimSpace(h2.Text()) // Eliminante espaços em branco
+		url, _ := h2.Find("a").Attr("href")
+
+		excerpt := strings.TrimSpace(item.Find("div.post-block__content").Text())
+		
+		//fmt.Printf("Title: %s\nURL: %s\nExcerpt: %s\n\n", title, url, excerpt)
+
+		posts := []string{title, url, excerpt}
+
+		// Escrevendo os elementos em um csv
+		writer.Write(posts)
+	})
+
+	writer.Flush()
 
 	//fmt.Println(river)
-	writeFile(river, "index.html")
+	//writeFile(river, "index.html")
 }
