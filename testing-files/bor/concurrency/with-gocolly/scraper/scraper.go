@@ -237,6 +237,13 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 
 		if h.DOM.Find(".product_title").Text() == "" {
 			return
+		} else {
+			fmt.Println("Name: ", h.DOM.Find(".product_title").Text())
+			for _, pokemon := range *pokemons {
+				if pokemon.Info.Name == h.DOM.Find(".product_title").Text() {
+					return
+				}
+			}
 		}
 
 		for _, summary := range h.DOM.Find(".summary").Children().Nodes {
@@ -264,11 +271,10 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 
 		p.Info = pInfo
 		//listed := false
-		//
-		//for i := range *pokemons {
-		//	if (*pokemons)[i].Info.Name == p.Info.Name {
+
+		//for _, pokemon := range *pokemons {
+		//	if pokemon.Info.Name == p.Info.Name {
 		//		listed = true
-		//		return
 		//	}
 		//}
 		//if pInfo.Name != "" {
@@ -312,7 +318,7 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 						wg.Add(1)
 						go Scraper(link, quotes, authors, pokemons, visitedPages, wg)
 					} else {
-						time.Sleep(30 * time.Second)
+						time.Sleep(10 * time.Second)
 						counter = i
 					}
 				} else {
