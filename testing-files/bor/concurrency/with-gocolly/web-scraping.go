@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 	"web-scraper-colly/scraper"
 )
 
@@ -21,6 +22,8 @@ func main() {
 	authors := []scraper.Author{}
 	pokemons := []scraper.Pokemon{}
 	visitedPages := []scraper.URL{}
+
+	start := time.Now()
 
 	wg.Add(1)
 	go scraper.Scraper("https://scrapeme.live/shop/", &quotes, &authors, &pokemons, &visitedPages, &wg)
@@ -39,6 +42,7 @@ func main() {
 	//for _, p := range pokemons {
 	//	p.Print()
 	//}
+	elapsed := time.Since(start)
 
 	fmt.Println("Visited pages:")
 	for i, page := range visitedPages {
@@ -55,4 +59,6 @@ func main() {
 	}
 
 	writer.Flush()
+
+	fmt.Println(elapsed.Milliseconds())
 }

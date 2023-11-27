@@ -100,6 +100,11 @@ func (p Pokemon) CsvEntry() []string {
 }
 
 func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon, visitedPages *[]URL, wg *sync.WaitGroup) {
+	start := time.Now()
+
+	defer func() {
+		fmt.Println("Time elapsed: ", time.Since(start))
+	}()
 	defer wg.Done()
 
 	links := []string{}
