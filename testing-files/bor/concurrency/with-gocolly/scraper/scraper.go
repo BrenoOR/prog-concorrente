@@ -2,7 +2,9 @@ package scraper
 
 import (
 	"fmt"
+	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gocolly/colly"
 )
@@ -100,21 +102,43 @@ func (p Pokemon) CsvEntry() []string {
 func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon, visitedPages *[]URL, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	c := colly.NewCollector()
+	links := []string{}
+	toVisit := false
 
-	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 20})
+	c := colly.NewCollector(
+		colly.MaxDepth(4),
+		colly.Async(true),
+	)
+
+	c.WithTransport(&http.Transport{
+		DisableKeepAlives: true,
+	})
+
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
 
 	c.OnRequest(func(req *colly.Request) {
 		req.Headers.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
-		fmt.Println("Visiting: ", req.URL)
+		//fmt.Println("Visiting: ", req.URL)
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
 		fmt.Println("Something went wrong: ", err)
+		//visited := false
+		//for _, page := range *visitedPages {
+		//	if page.Url == url {
+		//		//fmt.Println("Already visited: ", url)
+		//		visited = true
+		//	}
+		//}
+		//
+		//if !visited {
+		//	links = append(links, url)
+		//	toVisit = true
+		//}
 	})
 
 	c.OnResponse(func(r *colly.Response) {
-		fmt.Println("Response code: ", r.StatusCode)
+		//fmt.Println("Response code: ", r.StatusCode)
 		if r.StatusCode == 200 {
 			*visitedPages = append(*visitedPages, URL{Url: r.Request.URL.String()})
 		}
@@ -165,8 +189,20 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 			for _, attr := range page.Attr {
 				//fmt.Println(attr.Key, attr.Val)
 				if attr.Key == "href" {
-					wg.Add(1)
-					go Scraper(attr.Val, quotes, authors, pokemons, visitedPages, wg)
+					visited := false
+					for _, page := range *visitedPages {
+						if page.Url == attr.Val {
+							//fmt.Println("Already visited: ", url)
+							visited = true
+						}
+					}
+
+					if !visited {
+						links = append(links, attr.Val)
+						toVisit = true
+					}
+					//wg.Add(1)
+					//go Scraper(attr.Val, quotes, authors, pokemons, visitedPages, wg)
 				}
 			}
 		}
@@ -176,8 +212,20 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 		for _, pokemon := range h.DOM.Find(".woocommerce-LoopProduct-link").Nodes {
 			for _, attr := range pokemon.Attr {
 				if attr.Key == "href" {
-					wg.Add(1)
-					go Scraper(attr.Val, quotes, authors, pokemons, visitedPages, wg)
+					visited := false
+					for _, page := range *visitedPages {
+						if page.Url == attr.Val {
+							//fmt.Println("Already visited: ", url)
+							visited = true
+						}
+					}
+
+					if !visited {
+						links = append(links, attr.Val)
+						toVisit = true
+					}
+					//wg.Add(1)
+					//go Scraper(attr.Val, quotes, authors, pokemons, visitedPages, wg)
 				}
 			}
 		}
@@ -186,6 +234,10 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 	c.OnHTML(".product", func(h *colly.HTMLElement) {
 		p := Pokemon{}
 		pInfo := PokemonInfo{}
+
+		if h.DOM.Find(".product_title").Text() == "" {
+			return
+		}
 
 		for _, summary := range h.DOM.Find(".summary").Children().Nodes {
 			for _, attr := range summary.FirstChild.Attr {
@@ -211,21 +263,21 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 		}
 
 		p.Info = pInfo
-		listed := false
+		//listed := false
+		//
+		//for i := range *pokemons {
+		//	if (*pokemons)[i].Info.Name == p.Info.Name {
+		//		listed = true
+		//		return
+		//	}
+		//}
+		//if pInfo.Name != "" {
+		//	listed = true
+		//}
 
-		for i := range *pokemons {
-			if (*pokemons)[i].Info.Name == p.Info.Name {
-				listed = true
-				return
-			}
-		}
-		if pInfo.Name != "" {
-			listed = true
-		}
-
-		if !listed {
-			*pokemons = append(*pokemons, p)
-		}
+		*pokemons = append(*pokemons, p)
+		//if !listed {
+		//}
 	})
 
 	// Check if the page was already visited
@@ -234,11 +286,41 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 		if page.Url == url {
 			//fmt.Println("Already visited: ", url)
 			visited = true
-			return
 		}
 	}
 
 	if !visited {
 		c.Visit(url)
+		c.Wait()
+
+		if toVisit && len(links) > 0 {
+			fmt.Println("Visiting: ", len(links), " links")
+			fmt.Println("Pages visited: ", len(*visitedPages))
+			counter := 0
+			for i, link := range links {
+				linkVisited := false
+				for _, page := range *visitedPages {
+					if page.Url == link {
+						linkVisited = true
+					}
+				}
+
+				if !linkVisited && link != "https://scrapeme.live/shop/page/1/" {
+					maxPages := 2
+					if i-counter < maxPages {
+						fmt.Println("Visiting: ", maxPages, " of the ", len(links), " links", " - ", i, "/", len(links))
+						wg.Add(1)
+						go Scraper(link, quotes, authors, pokemons, visitedPages, wg)
+					} else {
+						time.Sleep(30 * time.Second)
+						counter = i
+					}
+				} else {
+					if link != "https://scrapeme.live/shop/page/1/" {
+						fmt.Println("Already visited: ", link)
+					}
+				}
+			}
+		}
 	}
 }

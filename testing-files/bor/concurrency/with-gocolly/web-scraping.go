@@ -40,6 +40,11 @@ func main() {
 	//	p.Print()
 	//}
 
+	fmt.Println("Visited pages:")
+	for i, page := range visitedPages {
+		fmt.Println(i, ": ", page.Url)
+	}
+
 	file, err := os.Create("pokemons.csv")
 	checkError(err)
 
