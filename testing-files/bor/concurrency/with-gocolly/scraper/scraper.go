@@ -14,6 +14,11 @@ type URL struct {
 	Url string
 }
 
+type SlcURL struct {
+	MutexURL sync.Mutex
+	URLs     []string
+}
+
 // Types for http://quotes.toscrape.com page scraping
 type Quote struct {
 	Quote  string
@@ -99,14 +104,235 @@ func (p Pokemon) CsvEntry() []string {
 	return []string{p.Info.Name, p.Info.Description, p.Info.Weight, p.Info.Dimensions, categories, p.Price, p.Quantity, p.SKU, tags}
 }
 
-func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon, visitedPages *[]URL, wg *sync.WaitGroup) {
-	start := time.Now()
-
-	defer func() {
-		fmt.Println("Time elapsed: ", time.Since(start))
-	}()
+func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon, pagesToVisit *SlcURL, visitedPages *SlcURL, wg *sync.WaitGroup) {
 	defer wg.Done()
 
+	c := colly.NewCollector(
+		colly.MaxDepth(4),
+		colly.Async(true),
+	)
+
+	c.WithTransport(&http.Transport{
+		DisableKeepAlives: true,
+	})
+
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
+
+	c.OnRequest(func(req *colly.Request) {
+		req.Headers.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+		//fmt.Println("Visiting: ", req.URL)
+	})
+
+	c.OnError(func(_ *colly.Response, err error) {
+		fmt.Println("Something went wrong: ", err)
+		visited := false
+		//(*visitedPages).MutexURL.TryLock()
+		for _, page := range (*visitedPages).URLs {
+			if page == url {
+				//fmt.Println("Already visited: ", url)
+				visited = true
+			}
+		}
+		//(*visitedPages).MutexURL.Unlock()
+
+		if !visited {
+			//(*pagesToVisit).MutexURL.TryLock()
+			(*pagesToVisit).URLs = append((*pagesToVisit).URLs, url)
+			//(*pagesToVisit).MutexURL.Unlock()
+		}
+	})
+
+	c.OnResponse(func(r *colly.Response) {
+		//fmt.Println("Response code: ", r.StatusCode)
+		if r.StatusCode == 200 {
+			//(*visitedPages).MutexURL.TryLock()
+			visited := false
+			for _, page := range (*visitedPages).URLs {
+				if page == r.Request.URL.String() {
+					visited = true
+					break
+				}
+			}
+			if !visited {
+				(*visitedPages).URLs = append((*visitedPages).URLs, r.Request.URL.String())
+			}
+			//(*visitedPages).MutexURL.Unlock()
+
+			//(*pagesToVisit).MutexURL.TryLock()
+			for i, page := range (*pagesToVisit).URLs {
+				if page == r.Request.URL.String() {
+					//fmt.Println("Removing: ", (*pagesToVisit).URLs[i])
+					(*pagesToVisit).URLs = append((*pagesToVisit).URLs[:i], (*pagesToVisit).URLs[i+1:]...)
+					break
+				}
+			}
+			//(*pagesToVisit).MutexURL.Unlock()
+		}
+
+	})
+
+	c.OnHTML(".quote", func(h *colly.HTMLElement) {
+		q := Quote{}
+		q.Quote = h.DOM.Find(".text").Text()
+		q.Author = h.DOM.Find(".author").Text()
+		q.About = h.DOM.Find(".author").Next().AttrOr("href", "Not found")
+		for _, tag := range h.DOM.Find(".tag").Nodes {
+			q.Tags = append(q.Tags, tag.FirstChild.Data)
+		}
+		if q.About != "Not found" {
+			wg.Add(1)
+			go Scraper("http://quotes.toscrape.com"+q.About, quotes, authors, pokemons, pagesToVisit, visitedPages, wg)
+		}
+
+		*quotes = append(*quotes, q)
+	})
+
+	// http://quotes.toscrape.com page scraping
+	c.OnHTML(".author-details", func(h *colly.HTMLElement) {
+		a := Author{}
+		a.Name = h.DOM.Find(".author-title").Text()
+		a.Birthdate = h.DOM.Find(".author-born-date").Text()
+		a.Location = h.DOM.Find(".author-born-location").Text()
+		a.Bio = h.DOM.Find(".author-description").Text()
+
+		listed := false
+
+		for i := range *authors {
+			if (*authors)[i].Name == a.Name {
+				listed = true
+				return
+			}
+		}
+
+		if !listed {
+			*authors = append(*authors, a)
+		}
+	})
+
+	// https://scrapeme.live/shop/ page scraping
+	c.OnHTML(".storefront-sorting", func(h *colly.HTMLElement) {
+		for _, page := range h.DOM.Find(".page-numbers").Nodes {
+			for _, attr := range page.Attr {
+				if attr.Key == "href" {
+					visited := false
+					//(*visitedPages).MutexURL.TryLock()
+					for _, page := range (*visitedPages).URLs {
+						if page == attr.Val {
+							visited = true
+							break
+						}
+					}
+					//(*visitedPages).MutexURL.Unlock()
+
+					if !visited {
+						//(*pagesToVisit).MutexURL.TryLock()
+						(*pagesToVisit).URLs = append((*pagesToVisit).URLs, attr.Val)
+						//(*pagesToVisit).MutexURL.Unlock()
+					}
+					//wg.Add(1)
+					//go Scraper(attr.Val, quotes, authors, pokemons, visitedPages, wg)
+				}
+			}
+		}
+	})
+
+	c.OnHTML(".columns-4", func(h *colly.HTMLElement) {
+		for _, pokemon := range h.DOM.Find(".woocommerce-LoopProduct-link").Nodes {
+			for _, attr := range pokemon.Attr {
+				if attr.Key == "href" {
+					visited := false
+					//(*visitedPages).MutexURL.TryLock()
+					for _, page := range (*visitedPages).URLs {
+						if page == attr.Val {
+							fmt.Println("Already visited: ", url)
+							visited = true
+							break
+						}
+					}
+					//(*visitedPages).MutexURL.Unlock()
+
+					if !visited {
+						//(*pagesToVisit).MutexURL.TryLock()
+						(*pagesToVisit).URLs = append((*pagesToVisit).URLs, attr.Val)
+						//(*pagesToVisit).MutexURL.Unlock()
+					}
+					//wg.Add(1)
+					//go Scraper(attr.Val, quotes, authors, pokemons, visitedPages, wg)
+				}
+			}
+		}
+	})
+
+	c.OnHTML(".product", func(h *colly.HTMLElement) {
+		p := Pokemon{}
+		pInfo := PokemonInfo{}
+
+		if h.DOM.Find(".product_title").Text() == "" {
+			return
+		} else {
+			//fmt.Println("Name: ", h.DOM.Find(".product_title").Text())
+			for _, pokemon := range *pokemons {
+				if pokemon.Info.Name == h.DOM.Find(".product_title").Text() {
+					return
+				}
+			}
+		}
+
+		for _, summary := range h.DOM.Find(".summary").Children().Nodes {
+			for _, attr := range summary.FirstChild.Attr {
+				if attr.Val == "woocommerce-Price-amount amount" {
+					p.Price = summary.FirstChild.FirstChild.FirstChild.Data + summary.FirstChild.LastChild.Data
+				}
+			}
+		}
+		p.Quantity = h.DOM.Find(".in-stock").Text()
+		p.SKU = h.DOM.Find(".sku").Text()
+		for _, tag := range h.DOM.Find(".tag").Nodes {
+			p.Tags = append(p.Tags, tag.FirstChild.Data)
+		}
+
+		pInfo.Name = h.DOM.Find(".product_title").Text()
+		pInfo.Description = h.DOM.Find(".woocommerce-product-details__short-description").Text()
+		pInfo.Weight = h.DOM.Find(".product_weight").Text()
+		pInfo.Dimensions = h.DOM.Find(".product_dimensions").Text()
+		for _, category := range h.DOM.Find(".posted_in").Children().Nodes {
+			if category.FirstChild.Data != "Pokemon" {
+				pInfo.Categories = append(pInfo.Categories, category.FirstChild.Data)
+			}
+		}
+
+		p.Info = pInfo
+
+		*pokemons = append(*pokemons, p)
+	})
+
+	// Check if the page was already visited
+	visited := false
+	//(*visitedPages).MutexURL.TryLock()
+	for _, page := range (*visitedPages).URLs {
+		if page == url {
+			//fmt.Println("Already visited: ", url)
+			visited = true
+			for i, page := range (*pagesToVisit).URLs {
+				if page == url {
+					//fmt.Println("Removing: ", (*pagesToVisit).URLs[i])
+					(*pagesToVisit).URLs = append((*pagesToVisit).URLs[:i], (*pagesToVisit).URLs[i+1:]...)
+					break
+				}
+			}
+			break
+		}
+	}
+	//(*visitedPages).MutexURL.Unlock()
+
+	if !visited {
+		c.Visit(url)
+
+		c.Wait()
+	}
+}
+
+func ScraperNoConcurrence(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon, visitedPages *[]URL) {
 	links := []string{}
 	toVisit := false
 
@@ -119,7 +345,7 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 		DisableKeepAlives: true,
 	})
 
-	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
 
 	c.OnRequest(func(req *colly.Request) {
 		req.Headers.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
@@ -127,19 +353,19 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
-		fmt.Println("Something went wrong: ", err)
-		//visited := false
-		//for _, page := range *visitedPages {
-		//	if page.Url == url {
-		//		//fmt.Println("Already visited: ", url)
-		//		visited = true
-		//	}
-		//}
-		//
-		//if !visited {
-		//	links = append(links, url)
-		//	toVisit = true
-		//}
+		//fmt.Println("Something went wrong: ", err)
+		visited := false
+		for _, page := range *visitedPages {
+			if page.Url == url {
+				//fmt.Println("Already visited: ", url)
+				visited = true
+			}
+		}
+
+		if !visited {
+			links = append(links, url)
+			toVisit = true
+		}
 	})
 
 	c.OnResponse(func(r *colly.Response) {
@@ -159,8 +385,7 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 			q.Tags = append(q.Tags, tag.FirstChild.Data)
 		}
 		if q.About != "Not found" {
-			wg.Add(1)
-			go Scraper("http://quotes.toscrape.com"+q.About, quotes, authors, pokemons, visitedPages, wg)
+			ScraperNoConcurrence("http://quotes.toscrape.com"+q.About, quotes, authors, pokemons, visitedPages)
 		}
 
 		*quotes = append(*quotes, q)
@@ -206,8 +431,6 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 						links = append(links, attr.Val)
 						toVisit = true
 					}
-					//wg.Add(1)
-					//go Scraper(attr.Val, quotes, authors, pokemons, visitedPages, wg)
 				}
 			}
 		}
@@ -243,7 +466,7 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 		if h.DOM.Find(".product_title").Text() == "" {
 			return
 		} else {
-			fmt.Println("Name: ", h.DOM.Find(".product_title").Text())
+			//fmt.Println("Name: ", h.DOM.Find(".product_title").Text())
 			for _, pokemon := range *pokemons {
 				if pokemon.Info.Name == h.DOM.Find(".product_title").Text() {
 					return
@@ -275,20 +498,8 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 		}
 
 		p.Info = pInfo
-		//listed := false
-
-		//for _, pokemon := range *pokemons {
-		//	if pokemon.Info.Name == p.Info.Name {
-		//		listed = true
-		//	}
-		//}
-		//if pInfo.Name != "" {
-		//	listed = true
-		//}
 
 		*pokemons = append(*pokemons, p)
-		//if !listed {
-		//}
 	})
 
 	// Check if the page was already visited
@@ -305,8 +516,8 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 		c.Wait()
 
 		if toVisit && len(links) > 0 {
-			fmt.Println("Visiting: ", len(links), " links")
-			fmt.Println("Pages visited: ", len(*visitedPages))
+			//fmt.Println("Visiting: ", len(links), " links")
+			//fmt.Println("Pages visited: ", len(*visitedPages))
 			counter := 0
 			for i, link := range links {
 				linkVisited := false
@@ -317,18 +528,17 @@ func Scraper(url string, quotes *[]Quote, authors *[]Author, pokemons *[]Pokemon
 				}
 
 				if !linkVisited && link != "https://scrapeme.live/shop/page/1/" {
-					maxPages := 2
+					maxPages := 5
 					if i-counter < maxPages {
-						fmt.Println("Visiting: ", maxPages, " of the ", len(links), " links", " - ", i, "/", len(links))
-						wg.Add(1)
-						go Scraper(link, quotes, authors, pokemons, visitedPages, wg)
+						//fmt.Println("Visiting: ", maxPages, " of the ", len(links), " links", " - ", i, "/", len(links))
+						ScraperNoConcurrence(link, quotes, authors, pokemons, visitedPages)
 					} else {
-						time.Sleep(10 * time.Second)
+						time.Sleep(2 * time.Second)
 						counter = i
 					}
 				} else {
 					if link != "https://scrapeme.live/shop/page/1/" {
-						fmt.Println("Already visited: ", link)
+						//fmt.Println("Already visited: ", link)
 					}
 				}
 			}
