@@ -11,21 +11,26 @@ import (
 )
 
 func main() {
-	conn := connectUDPServer(8081)
-	defer conn.Close()
+	getPageUDP("http://quotes.toscrape.com")
+	getPageTCP("http://quotes.toscrape.com/author/Albert-Einstein")
+}
 
-	_, err := conn.Write(([]byte)("http://quotes.toscrape.com"))
+func getPageUDP(page string) {
+	connUDP := connectUDPServer(8081)
+	defer connUDP.Close()
+
+	_, err := connUDP.Write(([]byte)("http://quotes.toscrape.com"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	res := make([]byte, 500*1000) // buffer size 500KB
-	_, err = conn.Read(res)
+	res1 := make([]byte, 500*1000) // buffer size 500KB
+	_, err = connUDP.Read(res1)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res))
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res1))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,6 +41,38 @@ func main() {
 	})
 }
 
+func getPageTCP(page string) {
+	connTCP := connectTCPServer(8082)
+	defer connTCP.Close()
+
+	_, err := connTCP.Write(([]byte)("http://quotes.toscrape.com/author/Albert-Einstein"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	res := make([]byte, 500*1000) // buffer size 500KB
+	_, err = connTCP.Read(res)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	doc.Find(".product").Each(func(i int, s *goquery.Selection) {
+		fmt.Println(s.Find(".product_title").Text())
+		fmt.Println(s.Find(".summary").Text())
+	})
+
+	doc.Find(".author-details").Each(func(i int, s *goquery.Selection) {
+		fmt.Println(s.Find(".author-title").Text())
+		fmt.Println(s.Find(".author-born-date").Text())
+		fmt.Println(s.Find(".author-born-location").Text())
+	})
+}
+
 func connectUDPServer(port int) *net.UDPConn {
 	scrapeServer, err := net.ResolveUDPAddr("udp", fmt.Sprint(":", port))
 	if err != nil {
@@ -43,6 +80,20 @@ func connectUDPServer(port int) *net.UDPConn {
 	}
 
 	conn, err := net.DialUDP("udp", nil, scrapeServer)
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+	return conn
+}
+
+func connectTCPServer(port int) *net.TCPConn {
+	scrapeServer, err := net.ResolveTCPAddr("tcp", fmt.Sprint(":", port))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	conn, err := net.DialTCP("tcp", nil, scrapeServer)
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)

@@ -40,8 +40,9 @@ func main() {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
-	wg.Add(1)
+	wg.Add(2)
 	go runUDP(8081, &db)
+	go runTCP(8082, &db)
 }
 
 func prepareDataBase(db *DataBase) {
@@ -64,6 +65,12 @@ func prepareDataBase(db *DataBase) {
 		go loadPage(db, page, &it, len(pages), &mutexIT, &mutexMap, &wg)
 	}
 	wg.Wait()
+
+	if len(db.pages) == 0 {
+		log.Fatal("No pages loaded.")
+	} else {
+		fmt.Println("Database loaded with", len(db.pages), "pages.")
+	}
 }
 
 func loadPage(db *DataBase, page string, it *int, totalRange int, mutexIT *sync.Mutex, mutexMap *sync.Mutex, wg *sync.WaitGroup) {
@@ -98,15 +105,10 @@ func loadPage(db *DataBase, page string, it *int, totalRange int, mutexIT *sync.
 }
 
 func runUDP(port int, db *DataBase) {
-	if len(db.pages) == 0 {
-		log.Fatal("No pages loaded.")
-	} else {
-		fmt.Println("Database loaded with", len(db.pages), "pages.")
-	}
-
+	database := *db
 	udpServer, err := net.ListenPacket("udp", fmt.Sprint(":", port))
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(udpServer.LocalAddr(), err)
 	}
 	defer udpServer.Close()
 	defer log.Println("UDP Server address:", udpServer.LocalAddr(), "closed.")
@@ -116,28 +118,22 @@ func runUDP(port int, db *DataBase) {
 		buf := make([]byte, 1024)
 		_, addr, err := udpServer.ReadFrom(buf)
 		if err != nil {
-			log.Println(err)
+			log.Println(udpServer.LocalAddr(), err)
 			continue
 		}
 
-		fmt.Println("Received request from", addr.String(), "for page:", string(buf))
-
-		go getPageUDP(db, udpServer, addr, string(buf))
+		go getPageUDP(&database, udpServer, addr, string(buf))
 	}
 }
 
 func getPageUDP(db *DataBase, udpServer net.PacketConn, addr net.Addr, page string) {
 	page_content, onMap := db.pages[page]
 	if !onMap {
-		fmt.Println("Page", page, "not found.")
 		keys := make([]string, 0, len(db.pages))
 		for k := range db.pages {
 			//fmt.Println("Key:", k, "Page:", page)
 			if strings.Contains(page, k) {
-				fmt.Println("Opsie. Page", page, "found.")
 				page_content = db.pages[k]
-				fmt.Println("Sending page:", page, "to", addr.String())
-				fmt.Println("Page size:", len(page_content), "bytes")
 				udpServer.WriteTo(page_content, addr)
 				return
 			}
@@ -146,8 +142,55 @@ func getPageUDP(db *DataBase, udpServer net.PacketConn, addr net.Addr, page stri
 		udpServer.WriteTo([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])), addr)
 		//udpServer.WriteTo([]byte(fmt.Sprint("Page not found. Try for: ", keys[0])), addr)
 	} else {
-		fmt.Println("Sending page:", page, "to", addr.String())
-		fmt.Println("Page size:", len(db.pages[page]), "bytes")
 		udpServer.WriteTo(page_content, addr)
+	}
+}
+
+func runTCP(port int, db *DataBase) {
+	database := *db
+	tcpServer, err := net.Listen("tcp", fmt.Sprint(":", port))
+	if err != nil {
+		log.Fatal(tcpServer.Addr(), err)
+	}
+	defer tcpServer.Close()
+	defer log.Println("TCP Server address:", tcpServer.Addr(), "closed.")
+	log.Println("TCP Server address:", tcpServer.Addr(), "open.")
+
+	for {
+		conn, err := tcpServer.Accept()
+		if err != nil {
+			log.Println(tcpServer.Addr(), err)
+			continue
+		}
+
+		go getPageTCP(conn, &database)
+	}
+}
+
+func getPageTCP(conn net.Conn, db *DataBase) {
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
+	_, err := conn.Read(buf)
+	if err != nil {
+		log.Println(conn.LocalAddr(), err)
+		return
+	}
+
+	page_content, onMap := db.pages[string(buf)]
+	if !onMap {
+		keys := make([]string, 0, len(db.pages))
+		for k := range db.pages {
+			//fmt.Println("Key:", k, "Page:", page)
+			if strings.Contains(string(buf), k) {
+				page_content = db.pages[k]
+				conn.Write(page_content)
+				return
+			}
+			keys = append(keys, k)
+		}
+		conn.Write([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])))
+	} else {
+		conn.Write(page_content)
 	}
 }
