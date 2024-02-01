@@ -1,17 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net"
 	"os"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 func main() {
 	conn := connectUDPServer(8081)
 	defer conn.Close()
 
-	_, err := conn.Write(([]byte)("https://scrapeme.live/shop/"))
+	_, err := conn.Write(([]byte)("http://quotes.toscrape.com"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -22,7 +25,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(string(res))
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	doc.Find(".quote").Each(func(i int, s *goquery.Selection) {
+		fmt.Println(s.Find(".text").Text())
+		fmt.Println(s.Find(".author").Text())
+	})
 }
 
 func connectUDPServer(port int) *net.UDPConn {
