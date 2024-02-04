@@ -1,4 +1,4 @@
-module scrapeClient
+module scrape-client
 
 go 1.21.6
 

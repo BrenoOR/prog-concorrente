@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 type DataBase struct {
@@ -111,39 +113,38 @@ func runUDP(port int, db *DataBase) {
 		log.Fatal(udpServer.LocalAddr(), err)
 	}
 	defer udpServer.Close()
-	defer log.Println("UDP Server address:", udpServer.LocalAddr(), "closed.")
-	log.Println("UDP Server address:", udpServer.LocalAddr(), "open.")
+	defer fmt.Println("[", time.Now().Format(time.RFC822), "] UDP Server address:", udpServer.LocalAddr(), "closed.")
+	fmt.Println("[", time.Now().Format(time.RFC822), "] UDP Server address:", udpServer.LocalAddr(), "open.")
 
 	for {
-		buf := make([]byte, 1024)
+		buf := make([]byte, 50*1024)
 		_, addr, err := udpServer.ReadFrom(buf)
 		if err != nil {
 			log.Println(udpServer.LocalAddr(), err)
 			continue
 		}
 
-		go getPageUDP(&database, udpServer, addr, string(buf))
+		page := bytes.Trim(buf, "\x00")
+
+		go getPageUDP(&database, udpServer, addr, string(page))
 	}
 }
 
 func getPageUDP(db *DataBase, udpServer net.PacketConn, addr net.Addr, page string) {
-	page_content, onMap := db.pages[page]
-	if !onMap {
-		keys := make([]string, 0, len(db.pages))
-		for k := range db.pages {
-			//fmt.Println("Key:", k, "Page:", page)
-			if strings.Contains(page, k) {
-				page_content = db.pages[k]
-				udpServer.WriteTo(page_content, addr)
-				return
-			}
-			keys = append(keys, k)
+	fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", page, "to", addr)
+
+	keys := make([]string, 0, len(db.pages))
+	for k := range db.pages {
+		//fmt.Println("Key size:", len(k), "Page size:", len(page))
+		if strings.Contains(page, k) && len(k) == len(page) {
+			fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", addr)
+			udpServer.WriteTo(db.pages[k], addr)
+			return
 		}
-		udpServer.WriteTo([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])), addr)
-		//udpServer.WriteTo([]byte(fmt.Sprint("Page not found. Try for: ", keys[0])), addr)
-	} else {
-		udpServer.WriteTo(page_content, addr)
+		keys = append(keys, k)
 	}
+	fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", page, "not found.")
+	udpServer.WriteTo([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])), addr)
 }
 
 func runTCP(port int, db *DataBase) {
@@ -153,8 +154,8 @@ func runTCP(port int, db *DataBase) {
 		log.Fatal(tcpServer.Addr(), err)
 	}
 	defer tcpServer.Close()
-	defer log.Println("TCP Server address:", tcpServer.Addr(), "closed.")
-	log.Println("TCP Server address:", tcpServer.Addr(), "open.")
+	defer fmt.Println("[", time.Now().Format(time.RFC822), "] TCP Server address:", tcpServer.Addr(), "closed.")
+	fmt.Println("[", time.Now().Format(time.RFC822), "] TCP Server address:", tcpServer.Addr(), "open.")
 
 	for {
 		conn, err := tcpServer.Accept()
@@ -170,27 +171,26 @@ func runTCP(port int, db *DataBase) {
 func getPageTCP(conn net.Conn, db *DataBase) {
 	defer conn.Close()
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, 50*1024)
 	_, err := conn.Read(buf)
 	if err != nil {
 		log.Println(conn.LocalAddr(), err)
 		return
 	}
 
-	page_content, onMap := db.pages[string(buf)]
-	if !onMap {
-		keys := make([]string, 0, len(db.pages))
-		for k := range db.pages {
-			//fmt.Println("Key:", k, "Page:", page)
-			if strings.Contains(string(buf), k) {
-				page_content = db.pages[k]
-				conn.Write(page_content)
-				return
-			}
-			keys = append(keys, k)
+	page := bytes.Trim(buf, "\x00")
+	fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", string(page), "to", conn.RemoteAddr())
+	keys := make([]string, 0, len(db.pages))
+	for k := range db.pages {
+		//fmt.Println("Key:", k, "Page:", page)
+		if strings.Contains(string(page), k) && len(k) == len(string(page)) {
+			page_content := db.pages[k]
+			fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", conn.RemoteAddr())
+			conn.Write(page_content)
+			return
 		}
-		conn.Write([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])))
-	} else {
-		conn.Write(page_content)
+		keys = append(keys, k)
 	}
+	fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", string(page), "not found.")
+	conn.Write([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])))
 }

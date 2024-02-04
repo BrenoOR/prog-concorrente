@@ -1,102 +1,111 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"log"
-	"net"
-	"os"
-
-	"github.com/PuerkitoBio/goquery"
+	"scrape-client/src"
+	"sync"
+	"time"
 )
 
 func main() {
-	getPageUDP("http://quotes.toscrape.com")
-	getPageTCP("http://quotes.toscrape.com/author/Albert-Einstein")
+	udpTrial := scrapeTrial(1, "udp")
+	fmt.Println("UDP Trial 1: ", udpTrial, "ms")
+	udpTrialNC := scrapeTrialNC(1, "udp")
+	fmt.Println("UDP Trial 1 (No Concurrency): ", udpTrialNC, "ms")
+	tcpTrial := scrapeTrial(1, "tcp")
+	fmt.Println("TCP Trial 1: ", tcpTrial, "ms")
+	tcpTrialNC := scrapeTrialNC(1, "tcp")
+	fmt.Println("TCP Trial 1 (No Concurrency): ", tcpTrialNC, "ms")
 }
 
-func getPageUDP(page string) {
-	connUDP := connectUDPServer(8081)
-	defer connUDP.Close()
+func scrapeTrial(trial int, connType string) int64 {
+	wg := sync.WaitGroup{}
+	URLsVisited := src.Slice_CS{}
+	URLsToVisit := src.Slice_CS{}
+	quotes := src.QuoteSlc{}
+	authors := src.AuthorSlc{}
+	pokemons := src.PokemonSlc{}
+	finished := false
 
-	_, err := connUDP.Write(([]byte)("http://quotes.toscrape.com"))
-	if err != nil {
-		log.Fatal(err)
+	URLsVisited.Append("https://scrapeme.live/shop/page/1/")
+
+	start := time.Now()
+
+	wg.Add(1)
+	go src.Scrape("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
+	//go src.Scrape("http://quotes.toscrape.com", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
+
+	wg.Wait()
+	for !finished {
+		for len(URLsToVisit.Slc) > 0 {
+			nextURL, toVisit := URLsToVisit.Pop()
+			if toVisit {
+				// fmt.Println("Visiting: ", nextURL)
+
+				wg.Add(1)
+				go src.Scrape(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
+			}
+		}
+		wg.Wait()
+		if len(URLsToVisit.Slc) > 0 {
+			finished = false
+		} else if len(URLsToVisit.Slc) == 0 {
+			finished = true
+		}
 	}
+	wg.Wait()
 
-	res1 := make([]byte, 500*1000) // buffer size 500KB
-	_, err = connUDP.Read(res1)
-	if err != nil {
-		log.Fatal(err)
-	}
+	elapsed := time.Since(start)
 
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res1))
-	if err != nil {
-		log.Fatal(err)
-	}
+	fmt.Println("Pokemons: ", len(pokemons.Get()))
+	fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
+	fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))
+	//fmt.Println("Quotes: ", len(quotes.Get()))
+	//fmt.Println("Authors: ", len(authors.Get()))
 
-	doc.Find(".quote").Each(func(i int, s *goquery.Selection) {
-		fmt.Println(s.Find(".text").Text())
-		fmt.Println(s.Find(".author").Text())
-	})
+	return elapsed.Milliseconds()
 }
 
-func getPageTCP(page string) {
-	connTCP := connectTCPServer(8082)
-	defer connTCP.Close()
+func scrapeTrialNC(trial int, connType string) int64 {
+	URLsVisited := src.Slice_CS{}
+	URLsToVisit := src.Slice_CS{}
+	quotes := src.QuoteSlc{}
+	authors := src.AuthorSlc{}
+	pokemons := src.PokemonSlc{}
 
-	_, err := connTCP.Write(([]byte)("http://quotes.toscrape.com/author/Albert-Einstein"))
-	if err != nil {
-		log.Fatal(err)
+	URLsVisited.Append("https://scrapeme.live/shop/page/1/")
+
+	start := time.Now()
+
+	src.ScrapeNC("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons)
+	//src.ScrapeNC("http://quotes.toscrape.com", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons)
+
+	//fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
+	//fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))
+
+	//time.Sleep(2 * time.Second)
+
+	for len(URLsToVisit.Slc) > 0 {
+		nextURL, toVisit := URLsToVisit.Pop()
+		if toVisit {
+			//fmt.Println("Visiting: ", nextURL)
+
+			src.ScrapeNC(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons)
+
+			//fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
+			//fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))
+
+			//time.Sleep(2 * time.Second)
+		}
 	}
 
-	res := make([]byte, 500*1000) // buffer size 500KB
-	_, err = connTCP.Read(res)
-	if err != nil {
-		log.Fatal(err)
-	}
+	elapsed := time.Since(start)
 
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(res))
-	if err != nil {
-		log.Fatal(err)
-	}
+	fmt.Println("Pokemons: ", len(pokemons.Get()))
+	fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
+	fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))
+	//fmt.Println("Quotes: ", len(quotes.Get()))
+	//fmt.Println("Authors: ", len(authors.Get()))
 
-	doc.Find(".product").Each(func(i int, s *goquery.Selection) {
-		fmt.Println(s.Find(".product_title").Text())
-		fmt.Println(s.Find(".summary").Text())
-	})
-
-	doc.Find(".author-details").Each(func(i int, s *goquery.Selection) {
-		fmt.Println(s.Find(".author-title").Text())
-		fmt.Println(s.Find(".author-born-date").Text())
-		fmt.Println(s.Find(".author-born-location").Text())
-	})
-}
-
-func connectUDPServer(port int) *net.UDPConn {
-	scrapeServer, err := net.ResolveUDPAddr("udp", fmt.Sprint(":", port))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	conn, err := net.DialUDP("udp", nil, scrapeServer)
-	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
-	}
-	return conn
-}
-
-func connectTCPServer(port int) *net.TCPConn {
-	scrapeServer, err := net.ResolveTCPAddr("tcp", fmt.Sprint(":", port))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	conn, err := net.DialTCP("tcp", nil, scrapeServer)
-	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
-	}
-	return conn
+	return elapsed.Milliseconds()
 }
