@@ -1,21 +1,50 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
+	"os"
 	"scrape-client/src"
 	"sync"
 	"time"
 )
 
 func main() {
-	udpTrial := scrapeTrial(1, "udp")
-	fmt.Println("UDP Trial 1: ", udpTrial, "ms")
-	udpTrialNC := scrapeTrialNC(1, "udp")
-	fmt.Println("UDP Trial 1 (No Concurrency): ", udpTrialNC, "ms")
-	tcpTrial := scrapeTrial(1, "tcp")
-	fmt.Println("TCP Trial 1: ", tcpTrial, "ms")
-	tcpTrialNC := scrapeTrialNC(1, "tcp")
-	fmt.Println("TCP Trial 1 (No Concurrency): ", tcpTrialNC, "ms")
+	totalTrials := 1000
+	info := [][]int64{}
+
+	for i := 0; i < totalTrials; i++ {
+		trialID := i + 1
+		udpTrial := scrapeTrial(trialID, "udp")
+		fmt.Println("UDP Trial ", trialID, ": ", udpTrial, "ms")
+		udpTrialNC := scrapeTrialNC(trialID, "udp")
+		fmt.Println("UDP Trial ", trialID, " (No Concurrency): ", udpTrialNC, "ms")
+		tcpTrial := scrapeTrial(trialID, "tcp")
+		fmt.Println("TCP Trial ", trialID, ": ", tcpTrial, "ms")
+		tcpTrialNC := scrapeTrialNC(trialID, "tcp")
+		fmt.Println("TCP Trial ", trialID, " (No Concurrency): ", tcpTrialNC, "ms")
+
+		row := []int64{int64(trialID), udpTrial, udpTrialNC, tcpTrial, tcpTrialNC}
+		info = append(info, row)
+	}
+
+	data, err := os.Create("data.csv")
+	if err != nil {
+		fmt.Println("Error: ", err)
+	}
+	defer data.Close()
+
+	writer := csv.NewWriter(data)
+	defer writer.Flush()
+	headers := []string{"Trial", "UDP", "UDP (No Concurrency)", "TCP", "TCP (No Concurrency)"}
+	writer.Write(headers)
+	for _, row := range info {
+		strRow := []string{}
+		for _, cell := range row {
+			strRow = append(strRow, fmt.Sprint(cell))
+		}
+		writer.Write(strRow)
+	}
 }
 
 func scrapeTrial(trial int, connType string) int64 {
