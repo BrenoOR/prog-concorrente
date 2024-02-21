@@ -4,13 +4,22 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/rpc"
 	"os"
+	"sync"
+	"time"
 )
 
-func getPageUDP(page string, res *[]byte) {
+type Args struct {
+	Url string
+}
+
+func getPageUDP(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64) {
 	//fmt.Println("(UDP) Getting page: ", page, " (client)")
 	connUDP := connectUDPServer(8081)
 	defer connUDP.Close()
+
+	start := time.Now()
 
 	_, err := connUDP.Write(([]byte)(page))
 	if err != nil {
@@ -21,12 +30,19 @@ func getPageUDP(page string, res *[]byte) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	end := time.Now()
+	rttMutex.Lock()
+	*rttMean += end.Sub(start).Microseconds()
+	rttMutex.Unlock()
 }
 
-func getPageTCP(page string, res *[]byte) {
+func getPageTCP(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64) {
 	//fmt.Println("(TCP) Getting page: ", page, " (client)")
 	connTCP := connectTCPServer(8082)
 	defer connTCP.Close()
+
+	start := time.Now()
 
 	_, err := connTCP.Write(([]byte)(page))
 	if err != nil {
@@ -37,6 +53,30 @@ func getPageTCP(page string, res *[]byte) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	end := time.Now()
+	rttMutex.Lock()
+	*rttMean += end.Sub(start).Microseconds()
+	rttMutex.Unlock()
+}
+
+func getPageGoRPC(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64) {
+	args := Args{}
+	args.Url = page
+
+	client := connectGoRPCServer(8083)
+
+	start := time.Now()
+
+	err := client.Call("PageServer.GetPage", args, res)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	end := time.Now()
+	rttMutex.Lock()
+	*rttMean += end.Sub(start).Microseconds()
+	rttMutex.Unlock()
 }
 
 func connectUDPServer(port int) *net.UDPConn {
@@ -65,4 +105,13 @@ func connectTCPServer(port int) *net.TCPConn {
 		os.Exit(1)
 	}
 	return conn
+}
+
+func connectGoRPCServer(port int) *rpc.Client {
+	client, err := rpc.DialHTTP("tcp", fmt.Sprint(":", port))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return client
 }

@@ -1,22 +1,19 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
-	"time"
-)
 
-type DataBase struct {
-	pages map[string][]byte
-}
+	"scrapeServer/commons"
+	gorpcserver "scrapeServer/gorpcServer"
+	tcpserver "scrapeServer/tcpserver"
+	udpserver "scrapeServer/udpserver"
+)
 
 func printProgressBar(it int, total int) {
 	percentage := float64(it) / float64(total) * 100
@@ -35,20 +32,82 @@ func printProgressBar(it int, total int) {
 }
 
 func main() {
-	db := DataBase{}
-	db.pages = make(map[string][]byte)
+	checkDirs()
+
+	db := commons.DataBase{}
+	db.Pages = make(map[string][]byte)
 	prepareDataBase(&db)
 
-	wg := sync.WaitGroup{}
-	defer wg.Wait()
+	connTypes := make([]string, 0)
+	connTypes = append(connTypes, "udp", "tcp", "rpc")
 
-	wg.Add(2)
-	go runUDP(8081, &db)
-	go runTCP(8082, &db)
+	args := os.Args[1:]
+	if len(args) == 1 {
+		switch args[0] {
+		case "udp":
+			udpserver.RunUDP(8081, &db)
+		case "tcp":
+			tcpserver.RunTCP(8082, &db)
+		case "rpc":
+			gorpcserver.RunGoRPC(8083, &db)
+		case "help":
+			fmt.Println("Connection types available are:", connTypes)
+		default:
+			log.Fatal("Connection type not defined.")
+		}
+	} else {
+		log.Fatal("Provide exactly one connection type or 'help' for more info.")
+	}
+
 }
 
-func prepareDataBase(db *DataBase) {
+func checkDirs() {
+	if _, err := os.Stat("pages/quotes.toscrape.com/"); os.IsNotExist(err) {
+		os.MkdirAll("pages/quotes.toscrape.com/", 0755)
+	}
+	if _, err := os.Stat("pages/quotes.toscrape.com/author"); os.IsNotExist(err) {
+		os.MkdirAll("pages/quotes.toscrape.com/author", 0755)
+	}
+	if _, err := os.Stat("pages/scrapeme.live/"); os.IsNotExist(err) {
+		os.MkdirAll("pages/scrapeme.live/", 0755)
+	}
+	if _, err := os.Stat("pages/scrapeme.live/shop"); os.IsNotExist(err) {
+		os.MkdirAll("pages/scrapeme.live/shop", 0755)
+	}
+	if _, err := os.Stat("pages/scrapeme.live/shop/page"); os.IsNotExist(err) {
+		os.MkdirAll("pages/scrapeme.live/shop/page", 0755)
+	}
 
+	if _, err := os.Stat("pages/quotes.toscrape.com/index.html"); os.IsNotExist(err) {
+		downloadDataBase()
+	}
+	if _, err := os.Stat("pages/scrapeme.live/shop/index.html"); os.IsNotExist(err) {
+		downloadDataBase()
+	}
+}
+
+func downloadDataBase() {
+	file_content, err := os.ReadFile("pages/pagelist.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pages := strings.Split(string(file_content), "\n")
+	wg := sync.WaitGroup{}
+
+	it := 0
+	mutexIT := sync.Mutex{}
+	mutexMap := sync.Mutex{}
+
+	for _, page := range pages {
+		//fmt.Println(page)
+		wg.Add(1)
+		go downloadPage(page, &it, len(pages), &mutexIT, &mutexMap, &wg)
+	}
+	wg.Wait()
+}
+
+func prepareDataBase(db *commons.DataBase) {
 	file_content, err := os.ReadFile("pages/pagelist.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -68,14 +127,14 @@ func prepareDataBase(db *DataBase) {
 	}
 	wg.Wait()
 
-	if len(db.pages) == 0 {
+	if len(db.Pages) == 0 {
 		log.Fatal("No pages loaded.")
 	} else {
-		fmt.Println("Database loaded with", len(db.pages), "pages.")
+		fmt.Println("Database loaded with", len(db.Pages), "pages.")
 	}
 }
 
-func loadPage(db *DataBase, page string, it *int, totalRange int, mutexIT *sync.Mutex, mutexMap *sync.Mutex, wg *sync.WaitGroup) {
+func downloadPage(page string, it *int, totalRange int, mutexIT *sync.Mutex, mutexMap *sync.Mutex, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer func() {
 		mutexIT.Lock()
@@ -99,98 +158,51 @@ func loadPage(db *DataBase, page string, it *int, totalRange int, mutexIT *sync.
 		log.Fatal(err)
 	}
 
+	pageName := strings.Split(page, "://")[1]
+
+	if pageName[len(pageName)-1] == '/' {
+		pageName = pageName[:len(pageName)-1]
+	}
+
+	if len(strings.Split(pageName, "/")) == 1 {
+		pageName += "/index"
+	} else if strings.Split(pageName, "/")[len(strings.Split(pageName, "/"))-1] == "shop" {
+		pageName += "/index"
+	}
+
+	err = os.WriteFile("pages/"+pageName+".html", content, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func loadPage(db *commons.DataBase, page string, it *int, totalRange int, mutexIT *sync.Mutex, mutexMap *sync.Mutex, wg *sync.WaitGroup) {
+	defer wg.Done()
+	defer func() {
+		mutexIT.Lock()
+		*it++
+		mutexIT.Unlock()
+		printProgressBar(*it, totalRange)
+	}()
+
+	pageName := strings.Split(page, "://")[1]
+
+	if pageName[len(pageName)-1] == '/' {
+		pageName = pageName[:len(pageName)-1]
+	}
+
+	if len(strings.Split(pageName, "/")) == 1 {
+		pageName += "/index"
+	} else if strings.Split(pageName, "/")[len(strings.Split(pageName, "/"))-1] == "shop" {
+		pageName += "/index"
+	}
+
+	content, err := os.ReadFile("pages/" + pageName + ".html")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	mutexMap.Lock()
-	db.pages[page] = content
+	db.Pages[page] = content
 	mutexMap.Unlock()
-
-	//fmt.Println("Page", page, "loaded with", len(db.pages[page]), "bytes.")
-}
-
-func runUDP(port int, db *DataBase) {
-	database := *db
-	udpServer, err := net.ListenPacket("udp", fmt.Sprint(":", port))
-	if err != nil {
-		log.Fatal(udpServer.LocalAddr(), err)
-	}
-	defer udpServer.Close()
-	defer fmt.Println("[", time.Now().Format(time.RFC822), "] UDP Server address:", udpServer.LocalAddr(), "closed.")
-	fmt.Println("[", time.Now().Format(time.RFC822), "] UDP Server address:", udpServer.LocalAddr(), "open.")
-
-	for {
-		buf := make([]byte, 50*1024)
-		_, addr, err := udpServer.ReadFrom(buf)
-		if err != nil {
-			log.Println(udpServer.LocalAddr(), err)
-			continue
-		}
-
-		page := bytes.Trim(buf, "\x00")
-
-		go getPageUDP(&database, udpServer, addr, string(page))
-	}
-}
-
-func getPageUDP(db *DataBase, udpServer net.PacketConn, addr net.Addr, page string) {
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", page, "to", addr)
-
-	keys := make([]string, 0, len(db.pages))
-	for k := range db.pages {
-		//fmt.Println("Key size:", len(k), "Page size:", len(page))
-		if strings.Contains(page, k) && len(k) == len(page) {
-			fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", addr)
-			udpServer.WriteTo(db.pages[k], addr)
-			return
-		}
-		keys = append(keys, k)
-	}
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", page, "not found.")
-	udpServer.WriteTo([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])), addr)
-}
-
-func runTCP(port int, db *DataBase) {
-	database := *db
-	tcpServer, err := net.Listen("tcp", fmt.Sprint(":", port))
-	if err != nil {
-		log.Fatal(tcpServer.Addr(), err)
-	}
-	defer tcpServer.Close()
-	defer fmt.Println("[", time.Now().Format(time.RFC822), "] TCP Server address:", tcpServer.Addr(), "closed.")
-	fmt.Println("[", time.Now().Format(time.RFC822), "] TCP Server address:", tcpServer.Addr(), "open.")
-
-	for {
-		conn, err := tcpServer.Accept()
-		if err != nil {
-			log.Println(tcpServer.Addr(), err)
-			continue
-		}
-
-		go getPageTCP(conn, &database)
-	}
-}
-
-func getPageTCP(conn net.Conn, db *DataBase) {
-	defer conn.Close()
-
-	buf := make([]byte, 50*1024)
-	_, err := conn.Read(buf)
-	if err != nil {
-		log.Println(conn.LocalAddr(), err)
-		return
-	}
-
-	page := bytes.Trim(buf, "\x00")
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", string(page), "to", conn.RemoteAddr())
-	keys := make([]string, 0, len(db.pages))
-	for k := range db.pages {
-		//fmt.Println("Key:", k, "Page:", page)
-		if strings.Contains(string(page), k) && len(k) == len(string(page)) {
-			page_content := db.pages[k]
-			fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", conn.RemoteAddr())
-			conn.Write(page_content)
-			return
-		}
-		keys = append(keys, k)
-	}
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", string(page), "not found.")
-	conn.Write([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])))
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 	"web-scraper/scraper"
@@ -15,7 +16,7 @@ func checkError(err error) {
 
 func scrapTrial_v2(trial int) int64 {
 	//wg := sync.WaitGroup{}
-	ch := make(chan int, 800)
+	ch := make(chan int, 10)
 	URLsToVisit_v2 := []string{}
 	quotes := scraper.QuoteSlc{}
 	authors := scraper.AuthorSlc{}
@@ -23,12 +24,13 @@ func scrapTrial_v2(trial int) int64 {
 	times := scraper.RequestTimeSlc{}
 
 	//wg.Add(1)
-	URLsToVisit_v2 = append(URLsToVisit_v2, "https://scrapeme.live/shop/")
+	//URLsToVisit_v2 = append(URLsToVisit_v2, "https://scrapeme.live/shop/")
+	URLsToVisit_v2 = append(URLsToVisit_v2, "http://quotes.toscrape.com")
 
-	for i := 2; i <= 48; i++ {
-		//wg.Add(1)
-		URLsToVisit_v2 = append(URLsToVisit_v2, "https://scrapeme.live/shop/page/"+fmt.Sprint(i)+"/")
-	}
+	//for i := 2; i <= 48; i++ {
+	//	//wg.Add(1)
+	//	URLsToVisit_v2 = append(URLsToVisit_v2, "https://scrapeme.live/shop/page/"+fmt.Sprint(i)+"/")
+	//}
 
 	start := time.Now()
 	for _, page := range URLsToVisit_v2 {
@@ -44,7 +46,10 @@ func scrapTrial_v2(trial int) int64 {
 
 	elapsed := time.Since(start)
 
-	fmt.Println("Pokemons: ", len(pokemons.Get()))
+	//fmt.Println("Pokemons: ", len(pokemons.Get()))
+	fmt.Println("Quotes: ", len(quotes.Get()))
+	fmt.Println("Authors: ", len(authors.Get()))
+
 	total := 0
 	sum := int64(0)
 	for _, t := range times.Get() {
@@ -67,18 +72,36 @@ func scrapTrial(trial int) int64 {
 	finished := false
 
 	URLsVisited.Append("https://scrapeme.live/shop/page/1/")
+	f, err := os.Create("../../udp/server/pages/pagelist.txt")
+	checkError(err)
+	defer f.Close()
+
+	_, err = f.WriteString("https://scrapeme.live/shop/\n")
+	checkError(err)
+	f.Sync()
+
+	_, err = f.WriteString("https://scrapeme.live/shop/page/1/\n")
+	checkError(err)
+	f.Sync()
+
+	_, err = f.WriteString("http://quotes.toscrape.com\n")
+	checkError(err)
+	f.Sync()
 
 	start := time.Now()
-	wg.Add(1)
-	//go scraper.Scrape("https://scrapeme.live/shop/", &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
-	//go scraper.Scrape("http://quotes.toscrape.com", &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
+	wg.Add(2)
+	go scraper.Scrape("https://scrapeme.live/shop/", &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
+	go scraper.Scrape("http://quotes.toscrape.com", &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
 
 	wg.Wait()
 	for !finished {
 		for len(URLsToVisit.Slc) > 0 {
 			nextURL, toVisit := URLsToVisit.Pop()
 			if toVisit {
-				//fmt.Println("Visiting: ", nextURL)
+				fmt.Println("Visiting: ", nextURL)
+				_, err = f.WriteString(nextURL + "\n")
+				checkError(err)
+
 				wg.Add(1)
 				go scraper.Scrape(nextURL, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
 			}
@@ -94,7 +117,9 @@ func scrapTrial(trial int) int64 {
 
 	elapsed := time.Since(start)
 
-	fmt.Println("Pokemons: ", len(pokemons.Get()))
+	//fmt.Println("Pokemons: ", len(pokemons.Get()))
+	fmt.Println("Quotes: ", len(quotes.Get()))
+	fmt.Println("Authors: ", len(authors.Get()))
 
 	return elapsed.Milliseconds()
 }
@@ -130,10 +155,10 @@ func scrapTrial_NC(trial int) int64 {
 
 func main() {
 
-	//wc := scrapTrial(1)
-	wc_v2 := scrapTrial_v2(1)
+	wc := scrapTrial(1)
+	//wc_v2 := scrapTrial_v2(1)
 	//nc := scrapTrial_NC(1)
 
-	fmt.Println("Concurrency: Scraped in ", wc_v2, "ms")
-	//fmt.Println("No Concurrency: Scraped in ", nc, "ms")
+	fmt.Println("Concurrency: Scraped in ", wc, "ms")
+	//fmt.Println("No Concurrency: Scraped in ", wc_v2, "ms")
 }

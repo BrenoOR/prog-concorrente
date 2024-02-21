@@ -237,6 +237,7 @@ func (s *PokemonSlc) Contains(p Pokemon) bool {
 
 func Scrape(url string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, wg *sync.WaitGroup) {
 	defer wg.Done()
+
 	res, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
@@ -492,16 +493,22 @@ func Scrape_v2(url string, quotes *QuoteSlc, authors *AuthorSlc, pokemons *Pokem
 
 	doc.Find(".quote").Each(func(i int, s *goquery.Selection) {
 		q := Quote{}
+		var exists bool
 
 		q.Quote = s.Find(".text").Text()
 		q.Author = s.Find(".author").Text()
-		q.About, _ = s.Find(".author").Next().Attr("href")
+		q.About, exists = s.Find(".author").Next().Attr("href")
 		q.Tags = []string{}
 		s.Find(".tag").Each(func(i int, s *goquery.Selection) {
 			q.Tags = append(q.Tags, s.Text())
 		})
 
 		quotes.Append(q)
+
+		if exists {
+			*ch <- 1
+			go Scrape_v2("http://quotes.toscrape.com"+q.About, quotes, authors, pokemons, times, ch)
+		}
 	})
 
 	doc.Find(".author-details").Each(func(i int, s *goquery.Selection) {

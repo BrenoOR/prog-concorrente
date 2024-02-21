@@ -247,14 +247,16 @@ func (s *PokemonSlc) Contains(p Pokemon) bool {
 	return false
 }
 
-func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, wg *sync.WaitGroup) {
+func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, wg *sync.WaitGroup, rttMutex *sync.Mutex, rttMean *int64) {
 	defer wg.Done()
-	res := make([]byte, 500*1024) // buffer size 500KB
+	res := make([]byte, 500*1024)
 	switch connType {
 	case "tcp":
-		getPageTCP(url, &res)
+		getPageTCP(url, &res, rttMutex, rttMean)
 	case "udp":
-		getPageUDP(url, &res)
+		getPageUDP(url, &res, rttMutex, rttMean)
+	case "rpc":
+		getPageGoRPC(url, &res, rttMutex, rttMean)
 	default:
 		log.Fatal("Invalid connection type")
 	}
@@ -355,14 +357,16 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 	URLsVisited.Append(url)
 }
 
-func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc) {
+func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, rttMutex *sync.Mutex, rttMean *int64) {
 	res := make([]byte, 500*1024) // buffer size 500KB
 	//fmt.Println("Scraping:", url, "with", connType)
 	switch connType {
 	case "tcp":
-		getPageTCP(url, &res)
+		getPageTCP(url, &res, rttMutex, rttMean)
 	case "udp":
-		getPageUDP(url, &res)
+		getPageUDP(url, &res, rttMutex, rttMean)
+	case "rpc":
+		getPageGoRPC(url, &res, rttMutex, rttMean)
 	default:
 		log.Fatal("Invalid connection type")
 	}
