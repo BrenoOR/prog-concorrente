@@ -43,18 +43,18 @@ func getPageTCP(conn net.Conn, db *commons.DataBase) {
 	}
 
 	page := bytes.Trim(buf, "\x00")
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", string(page), "to", conn.RemoteAddr())
+	//fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", string(page), "to", conn.RemoteAddr())
 	keys := make([]string, 0, len(db.Pages))
 	for k := range db.Pages {
 		//fmt.Println("Key:", k, "Page:", page)
 		if strings.Contains(string(page), k) && len(k) == len(string(page)) {
 			page_content := db.Pages[k]
-			fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", conn.RemoteAddr())
+			//fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", conn.RemoteAddr())
 			conn.Write(page_content)
 			return
 		}
 		keys = append(keys, k)
 	}
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", string(page), "not found.")
+	//fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", string(page), "not found.")
 	conn.Write([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])))
 }

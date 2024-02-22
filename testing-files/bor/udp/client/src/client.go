@@ -60,11 +60,11 @@ func getPageTCP(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64) 
 	rttMutex.Unlock()
 }
 
-func getPageGoRPC(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64) {
+func getPageGoRPC(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64, client *rpc.Client, clientMutex *sync.Mutex) {
 	args := Args{}
 	args.Url = page
 
-	client := connectGoRPCServer(8083)
+	clientMutex.Lock()
 
 	start := time.Now()
 
@@ -74,6 +74,9 @@ func getPageGoRPC(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64
 	}
 
 	end := time.Now()
+
+	clientMutex.Unlock()
+
 	rttMutex.Lock()
 	*rttMean += end.Sub(start).Microseconds()
 	rttMutex.Unlock()
@@ -107,7 +110,7 @@ func connectTCPServer(port int) *net.TCPConn {
 	return conn
 }
 
-func connectGoRPCServer(port int) *rpc.Client {
+func ConnectGoRPCServer(port int) *rpc.Client {
 	client, err := rpc.DialHTTP("tcp", fmt.Sprint(":", port))
 	if err != nil {
 		log.Fatal(err)

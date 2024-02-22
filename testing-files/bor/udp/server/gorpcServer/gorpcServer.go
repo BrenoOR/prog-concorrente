@@ -60,14 +60,14 @@ func (s *PageServer) GetPage(args *Args, reply *[]byte) error {
 		//fmt.Println("Key:", k, "Page:", page)
 		if strings.Contains(args.Url, k) && len(k) == len(args.Url) {
 			page_content := db.Pages[k]
-			fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k)
+			//fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k)
 			*reply = page_content
 			return nil
 		}
 		keys = append(keys, k)
 	}
 
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", args.Url, "not found.")
+	//fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", args.Url, "not found.")
 	*reply = []byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))]))
 
 	return nil

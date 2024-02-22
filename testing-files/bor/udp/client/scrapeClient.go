@@ -28,8 +28,7 @@ func printProgressBar(it int, total int, trialMean int64, rttMean int64, trialNC
 }
 
 func main() {
-	totalTrials := 1
-	info := [][]int64{}
+	totalTrials := 1000
 	trialTotal := int64(0)
 	rttTotal := int64(0)
 	trialNCTotal := int64(0)
@@ -61,22 +60,6 @@ func main() {
 		log.Fatal("Connection type not provided.")
 	}
 
-	for i := 0; i < totalTrials; i++ {
-		trialID := i + 1
-		trial, rtt := scrapeTrial(trialID, connType)
-		trialNC, rttNC := scrapeTrialNC(trialID, connType)
-
-		row := []int64{int64(trialID), trial, rtt, trialNC, rttNC}
-		info = append(info, row)
-
-		trialTotal += trial
-		rttTotal += rtt
-		trialNCTotal += trialNC
-		rttNCTotal += rttNC
-
-		printProgressBar(i+1, totalTrials, trialTotal/int64(trialID), rttTotal/int64(trialID), trialNCTotal/int64(trialID), rttNCTotal/int64(trialID))
-	}
-
 	data, err := os.Create(connType + ".csv")
 	if err != nil {
 		fmt.Println("Error: ", err)
@@ -85,14 +68,29 @@ func main() {
 
 	writer := csv.NewWriter(data)
 	defer writer.Flush()
+
 	headers := []string{"Trial", strings.ToUpper(connType), "Mean RTT (" + strings.ToUpper(connType) + ")", strings.ToUpper(connType) + " (No Concurrency)", "Mean RTT (" + strings.ToUpper(connType) + "NC)"}
 	writer.Write(headers)
-	for _, row := range info {
+
+	for i := 0; i < totalTrials; i++ {
+		trialID := i + 1
+		trialNC, rttNC := scrapeTrialNC(trialID, connType)
+		trial, rtt := scrapeTrial(trialID, connType)
+
+		row := []int64{int64(trialID), trial, rtt, trialNC, rttNC}
+
 		strRow := []string{}
 		for _, cell := range row {
 			strRow = append(strRow, fmt.Sprint(cell))
 		}
 		writer.Write(strRow)
+
+		trialTotal += trial
+		rttTotal += rtt
+		trialNCTotal += trialNC
+		rttNCTotal += rttNC
+
+		printProgressBar(i+1, totalTrials, trialTotal/int64(trialID), rttTotal/int64(trialID), trialNCTotal/int64(trialID), rttNCTotal/int64(trialID))
 	}
 }
 
@@ -108,12 +106,16 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 	rttMean := int64(0)
 	rttMutex := sync.Mutex{}
 
+	client := src.ConnectGoRPCServer(8083)
+	clientMutex := sync.Mutex{}
+	defer client.Close()
+
 	URLsVisited.Append("https://scrapeme.live/shop/page/1/")
 
 	start := time.Now()
 
 	wg.Add(1)
-	go src.Scrape("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg, &rttMutex, &rttMean)
+	go src.Scrape("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg, &rttMutex, &rttMean, client, &clientMutex)
 	//go src.Scrape("http://quotes.toscrape.com", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
 
 	wg.Wait()
@@ -121,10 +123,10 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 		for len(URLsToVisit.Slc) > 0 {
 			nextURL, toVisit := URLsToVisit.Pop()
 			if toVisit {
-				// fmt.Println("Visiting: ", nextURL)
+				//fmt.Println("Visiting: ", nextURL)
 
 				wg.Add(1)
-				go src.Scrape(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg, &rttMutex, &rttMean)
+				go src.Scrape(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg, &rttMutex, &rttMean, client, &clientMutex)
 			}
 		}
 		wg.Wait()
@@ -158,11 +160,15 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 	rttMean := int64(0)
 	rttMutex := sync.Mutex{}
 
+	client := src.ConnectGoRPCServer(8083)
+	clientMutex := sync.Mutex{}
+	defer client.Close()
+
 	URLsVisited.Append("https://scrapeme.live/shop/page/1/")
 
 	start := time.Now()
 
-	src.ScrapeNC("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean)
+	src.ScrapeNC("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean, client, &clientMutex)
 	//src.ScrapeNC("http://quotes.toscrape.com", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons)
 
 	//fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
@@ -175,7 +181,7 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 		if toVisit {
 			//fmt.Println("Visiting: ", nextURL)
 
-			src.ScrapeNC(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean)
+			src.ScrapeNC(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean, client, &clientMutex)
 
 			//fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
 			//fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))

@@ -36,18 +36,18 @@ func RunUDP(port int, db *commons.DataBase) {
 }
 
 func getPageUDP(db *commons.DataBase, udpServer net.PacketConn, addr net.Addr, page string) {
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", page, "to", addr)
+	//fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", page, "to", addr)
 
 	keys := make([]string, 0, len(db.Pages))
 	for k := range db.Pages {
 		//fmt.Println("Key size:", len(k), "Page size:", len(page))
 		if strings.Contains(page, k) && len(k) == len(page) {
-			fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", addr)
+			//fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", addr)
 			udpServer.WriteTo(db.Pages[k], addr)
 			return
 		}
 		keys = append(keys, k)
 	}
-	fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", page, "not found.")
+	//fmt.Println("[", time.Now().Format(time.RFC822), "] Page:", page, "not found.")
 	udpServer.WriteTo([]byte(fmt.Sprint("Page not found. Try for:", keys[rand.Intn(len(keys))])), addr)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net/rpc"
 	"sync"
 
 	"github.com/PuerkitoBio/goquery"
@@ -247,7 +248,7 @@ func (s *PokemonSlc) Contains(p Pokemon) bool {
 	return false
 }
 
-func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, wg *sync.WaitGroup, rttMutex *sync.Mutex, rttMean *int64) {
+func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, wg *sync.WaitGroup, rttMutex *sync.Mutex, rttMean *int64, client *rpc.Client, clientMutex *sync.Mutex) {
 	defer wg.Done()
 	res := make([]byte, 500*1024)
 	switch connType {
@@ -256,7 +257,7 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 	case "udp":
 		getPageUDP(url, &res, rttMutex, rttMean)
 	case "rpc":
-		getPageGoRPC(url, &res, rttMutex, rttMean)
+		getPageGoRPC(url, &res, rttMutex, rttMean, client, clientMutex)
 	default:
 		log.Fatal("Invalid connection type")
 	}
@@ -357,7 +358,7 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 	URLsVisited.Append(url)
 }
 
-func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, rttMutex *sync.Mutex, rttMean *int64) {
+func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, rttMutex *sync.Mutex, rttMean *int64, client *rpc.Client, clientMutex *sync.Mutex) {
 	res := make([]byte, 500*1024) // buffer size 500KB
 	//fmt.Println("Scraping:", url, "with", connType)
 	switch connType {
@@ -366,7 +367,7 @@ func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *S
 	case "udp":
 		getPageUDP(url, &res, rttMutex, rttMean)
 	case "rpc":
-		getPageGoRPC(url, &res, rttMutex, rttMean)
+		getPageGoRPC(url, &res, rttMutex, rttMean, client, clientMutex)
 	default:
 		log.Fatal("Invalid connection type")
 	}
