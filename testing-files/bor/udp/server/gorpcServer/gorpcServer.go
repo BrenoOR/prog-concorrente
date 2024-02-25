@@ -14,10 +14,6 @@ import (
 	"time"
 )
 
-type Args struct {
-	Url string
-}
-
 type PageServer int64
 
 var database *commons.DataBase
@@ -46,7 +42,7 @@ func RunGoRPC(port int, db *commons.DataBase) {
 	http.Serve(gorpcServer, nil)
 }
 
-func (s *PageServer) GetPage(args *Args, reply *[]byte) error {
+func (s *PageServer) GetPage(args *commons.Args, reply *[]byte) error {
 	if args.Url == "" {
 		return errors.New("invalid page provided")
 	}

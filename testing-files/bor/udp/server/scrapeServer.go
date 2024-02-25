@@ -11,8 +11,8 @@ import (
 
 	"scrapeServer/commons"
 	gorpcserver "scrapeServer/gorpcServer"
-	tcpserver "scrapeServer/tcpserver"
-	udpserver "scrapeServer/udpserver"
+	tcpserver "scrapeServer/tcpServer"
+	udpserver "scrapeServer/udpServer"
 )
 
 func printProgressBar(it int, total int) {

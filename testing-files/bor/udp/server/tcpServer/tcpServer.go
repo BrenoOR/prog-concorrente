@@ -2,6 +2,7 @@ package tcpserver
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -35,19 +36,25 @@ func RunTCP(port int, db *commons.DataBase) {
 func getPageTCP(conn net.Conn, db *commons.DataBase) {
 	defer conn.Close()
 
-	buf := make([]byte, 50*1024)
+	buf := make([]byte, 500*1024)
 	_, err := conn.Read(buf)
 	if err != nil {
-		log.Println(conn.LocalAddr(), err)
+		log.Println(conn.RemoteAddr(), err)
 		return
 	}
+	//log.Println("From:", conn.RemoteAddr(), ":", string(bytes.Trim(buf, "\x00")))
 
-	page := bytes.Trim(buf, "\x00")
-	//fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", string(page), "to", conn.RemoteAddr())
+	var page commons.Args
+	err = json.Unmarshal(bytes.Trim(buf, "\x00"), &page)
+	if err != nil {
+		log.Println(conn.LocalAddr(), conn.RemoteAddr(), err)
+		return
+	}
+	//fmt.Println("[", time.Now().Format(time.RFC822), "] Getting page:", page.Url, "to", conn.RemoteAddr())
 	keys := make([]string, 0, len(db.Pages))
 	for k := range db.Pages {
 		//fmt.Println("Key:", k, "Page:", page)
-		if strings.Contains(string(page), k) && len(k) == len(string(page)) {
+		if strings.Contains(page.Url, k) && len(k) == len(page.Url) {
 			page_content := db.Pages[k]
 			//fmt.Println("[", time.Now().Format(time.RFC822), "] Sending page:", k, "to", conn.RemoteAddr())
 			conn.Write(page_content)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net"
 	"net/rpc"
 	"sync"
 
@@ -248,8 +249,12 @@ func (s *PokemonSlc) Contains(p Pokemon) bool {
 	return false
 }
 
-func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, wg *sync.WaitGroup, rttMutex *sync.Mutex, rttMean *int64, client *rpc.Client, clientMutex *sync.Mutex) {
+func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, ch *chan int, wg *sync.WaitGroup, rttMutex *sync.Mutex, rttMean *int64, clientUDP *net.UDPConn, clientTCP *net.TCPConn, clientRPC *rpc.Client, clientMutex *sync.Mutex) {
 	defer wg.Done()
+	defer func() {
+		<-*ch
+	}()
+
 	res := make([]byte, 500*1024)
 	switch connType {
 	case "tcp":
@@ -257,7 +262,7 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 	case "udp":
 		getPageUDP(url, &res, rttMutex, rttMean)
 	case "rpc":
-		getPageGoRPC(url, &res, rttMutex, rttMean, client, clientMutex)
+		getPageGoRPC(url, &res, rttMutex, rttMean, clientRPC, clientMutex)
 	default:
 		log.Fatal("Invalid connection type")
 	}
@@ -358,7 +363,7 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 	URLsVisited.Append(url)
 }
 
-func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, rttMutex *sync.Mutex, rttMean *int64, client *rpc.Client, clientMutex *sync.Mutex) {
+func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, rttMutex *sync.Mutex, rttMean *int64, clientUDP *net.UDPConn, clientTCP *net.TCPConn, clientRPC *rpc.Client, clientMutex *sync.Mutex) {
 	res := make([]byte, 500*1024) // buffer size 500KB
 	//fmt.Println("Scraping:", url, "with", connType)
 	switch connType {
@@ -367,7 +372,7 @@ func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *S
 	case "udp":
 		getPageUDP(url, &res, rttMutex, rttMean)
 	case "rpc":
-		getPageGoRPC(url, &res, rttMutex, rttMean, client, clientMutex)
+		getPageGoRPC(url, &res, rttMutex, rttMean, clientRPC, clientMutex)
 	default:
 		log.Fatal("Invalid connection type")
 	}
