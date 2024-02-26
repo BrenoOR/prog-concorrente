@@ -2,6 +2,7 @@ package udpserver
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -29,9 +30,13 @@ func RunUDP(port int, db *commons.DataBase) {
 			continue
 		}
 
-		page := bytes.Trim(buf, "\x00")
+		var page commons.Args
+		err = json.Unmarshal(bytes.Trim(buf, "\x00"), &page)
+		if err != nil {
+			log.Println(err)
+		}
 
-		go getPageUDP(&database, udpServer, addr, string(page))
+		go getPageUDP(&database, udpServer, addr, page.Url)
 	}
 }
 

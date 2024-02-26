@@ -18,8 +18,10 @@ type Args struct {
 
 func getPageUDP(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64) {
 	//fmt.Println("(UDP) Getting page: ", page, " (client)")
+	args := Args{}
+	args.Url = page
 
-	req, err := json.Marshal(page)
+	req, err := json.Marshal(args)
 	if err != nil {
 		log.Fatal(err)
 	}
