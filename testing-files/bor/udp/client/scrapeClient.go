@@ -30,7 +30,7 @@ func printProgressBar(it int, total int, trialMean int64, rttMean int64, trialNC
 }
 
 func main() {
-	totalTrials := 1000
+	totalTrials := 1
 	trialTotal := int64(0)
 	rttTotal := int64(0)
 	trialNCTotal := int64(0)
@@ -49,6 +49,8 @@ func main() {
 			connType = "tcp"
 		case "rpc":
 			connType = "rpc"
+		case "rabbitmq":
+			connType = "rabbitmq"
 		case "help":
 			fmt.Println("Connection types available are:", connTypes)
 		default:
@@ -174,6 +176,8 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 	//fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))
 	//fmt.Println("Quotes: ", len(quotes.Get()))
 	//fmt.Println("Authors: ", len(authors.Get()))
+
+	fmt.Println("Elapsed time of trial", trial, ": ", elapsed.Microseconds(), "µs")
 
 	return elapsed.Microseconds(), rttMean
 }

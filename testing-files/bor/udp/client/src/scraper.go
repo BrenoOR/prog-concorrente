@@ -263,6 +263,8 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 		getPageUDP(url, &res, rttMutex, rttMean)
 	case "rpc":
 		getPageGoRPC(url, &res, rttMutex, rttMean, clientRPC, clientMutex)
+	case "rabbitmq":
+		getPageRabbitMQ(url, &res, rttMutex, rttMean)
 	default:
 		log.Fatal("Invalid connection type")
 	}
@@ -373,6 +375,8 @@ func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *S
 		getPageUDP(url, &res, rttMutex, rttMean)
 	case "rpc":
 		getPageGoRPC(url, &res, rttMutex, rttMean, clientRPC, clientMutex)
+	case "rabbitmq":
+		getPageRabbitMQ(url, &res, rttMutex, rttMean)
 	default:
 		log.Fatal("Invalid connection type")
 	}

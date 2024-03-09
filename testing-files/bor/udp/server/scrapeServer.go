@@ -11,6 +11,7 @@ import (
 
 	"scrapeServer/commons"
 	gorpcserver "scrapeServer/gorpcServer"
+	rabbitmqserver "scrapeServer/rabbitMQServer"
 	tcpserver "scrapeServer/tcpServer"
 	udpserver "scrapeServer/udpServer"
 )
@@ -50,6 +51,8 @@ func main() {
 			tcpserver.RunTCP(8082, &db)
 		case "rpc":
 			gorpcserver.RunGoRPC(8083, &db)
+		case "rabbitmq":
+			rabbitmqserver.RunRabbitMQ(5672, &db)
 		case "help":
 			fmt.Println("Connection types available are:", connTypes)
 		default:
