@@ -126,7 +126,7 @@ func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *in
 	}
 
 	queue, err := chRabbitMQ.QueueDeclare(
-		"",    // name
+		page,  // name
 		false, // durable
 		false, // delete when unused
 		true,  // exclusive
@@ -161,25 +161,30 @@ func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *in
 		log.Fatal(err)
 	}
 
-	var holdConn chan int
+	fmt.Println("Getting page:", page, "=> onqueue:", queue.Name)
+
+	wg := sync.WaitGroup{}
 
 	start := time.Now()
 
-	go func() {
+	wg.Add(1)
+	go func(wg *sync.WaitGroup) {
 		for d := range msg {
 			*res = d.Body
 
 			end := time.Now()
+
+			fmt.Println("Received page: ", page, " in ", end.Sub(start).Microseconds(), " microseconds.")
 
 			rttMutex.Lock()
 			*rttMean += end.Sub(start).Microseconds()
 			rttMutex.Unlock()
 			break
 		}
-		holdConn <- 1
-	}()
+		wg.Done()
+	}(&wg)
 
-	<-holdConn
+	wg.Wait()
 }
 
 func ConnectUDPServer(port int) *net.UDPConn {

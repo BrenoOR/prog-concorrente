@@ -17,6 +17,8 @@ func RunRabbitMQ(port int, db *commons.DataBase) {
 		for k, v := range database.Pages {
 			publishPageToRabbitMQ(port, k, v)
 		}
+		fmt.Println("[", time.Now().Format(time.RFC822), "] All pages published to RabbitMQ.")
+		time.Sleep(time.Second * 30)
 	}
 }
 
@@ -61,6 +63,4 @@ func publishPageToRabbitMQ(port int, url string, page_content []byte) {
 	if err != nil {
 		log.Fatal("Failed to publish a message", err)
 	}
-
-	time.Sleep(5 * time.Second)
 }

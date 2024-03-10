@@ -78,8 +78,8 @@ func main() {
 
 	for i := 0; i < totalTrials; i++ {
 		trialID := i + 1
-		trialNC, rttNC := scrapeTrialNC(trialID, connType)
 		trial, rtt := scrapeTrial(trialID, connType)
+		trialNC, rttNC := scrapeTrialNC(trialID, connType)
 
 		row := []int64{int64(trialID), trial, rtt, trialNC, rttNC}
 
@@ -250,6 +250,8 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 	//fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))
 	//fmt.Println("Quotes: ", len(quotes.Get()))
 	//fmt.Println("Authors: ", len(authors.Get()))
+
+	fmt.Println("Elapsed time of trial", trial, ": ", elapsed.Microseconds(), "µs")
 
 	return elapsed.Microseconds(), rttMean
 }
