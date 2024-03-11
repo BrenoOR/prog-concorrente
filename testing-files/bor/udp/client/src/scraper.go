@@ -6,9 +6,11 @@ import (
 	"log"
 	"net"
 	"net/rpc"
+	"strings"
 	"sync"
 
 	"github.com/PuerkitoBio/goquery"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Slice_CS struct {
@@ -249,7 +251,7 @@ func (s *PokemonSlc) Contains(p Pokemon) bool {
 	return false
 }
 
-func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, ch *chan int, wg *sync.WaitGroup, rttMutex *sync.Mutex, rttMean *int64, clientUDP *net.UDPConn, clientTCP *net.TCPConn, clientRPC *rpc.Client, clientMutex *sync.Mutex) {
+func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, ch *chan int, wg *sync.WaitGroup, rttMutex *sync.Mutex, rttMean *int64, clientUDP *net.UDPConn, clientTCP *net.TCPConn, clientRPC *rpc.Client, consumer *amqp.Connection, clientMutex *sync.Mutex) {
 	defer wg.Done()
 	defer func() {
 		<-*ch
@@ -264,7 +266,7 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 	case "rpc":
 		getPageGoRPC(url, &res, rttMutex, rttMean, clientRPC, clientMutex)
 	case "rabbitmq":
-		getPageRabbitMQ(url, &res, rttMutex, rttMean)
+		getPageRabbitMQ(url, &res, rttMutex, rttMean, consumer)
 	default:
 		log.Fatal("Invalid connection type")
 	}
@@ -358,6 +360,9 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 		p.Info = pInfo
 
 		if pInfo.Name != "" && !pokemons.Contains(p) {
+			if strings.Contains(url, pInfo.Name) {
+				fmt.Println("Appending valid:", pInfo.Name)
+			}
 			pokemons.Append(p)
 		}
 	})
@@ -365,7 +370,7 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 	URLsVisited.Append(url)
 }
 
-func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, rttMutex *sync.Mutex, rttMean *int64, clientUDP *net.UDPConn, clientTCP *net.TCPConn, clientRPC *rpc.Client, clientMutex *sync.Mutex) {
+func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Slice_CS, quotes *QuoteSlc, authors *AuthorSlc, pokemons *PokemonSlc, rttMutex *sync.Mutex, rttMean *int64, clientUDP *net.UDPConn, clientTCP *net.TCPConn, clientRPC *rpc.Client, consumer *amqp.Connection, clientMutex *sync.Mutex) {
 	res := make([]byte, 500*1024) // buffer size 500KB
 	//fmt.Println("Scraping:", url, "with", connType)
 	switch connType {
@@ -376,7 +381,7 @@ func ScrapeNC(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *S
 	case "rpc":
 		getPageGoRPC(url, &res, rttMutex, rttMean, clientRPC, clientMutex)
 	case "rabbitmq":
-		getPageRabbitMQ(url, &res, rttMutex, rttMean)
+		getPageRabbitMQ(url, &res, rttMutex, rttMean, consumer)
 	default:
 		log.Fatal("Invalid connection type")
 	}

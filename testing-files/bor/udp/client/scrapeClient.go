@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func printProgressBar(it int, total int, trialMean int64, rttMean int64, trialNCMean int64, rttNCMean int64) {
@@ -38,7 +40,7 @@ func main() {
 
 	connType := ""
 	connTypes := make([]string, 0)
-	connTypes = append(connTypes, "udp", "tcp", "rpc")
+	connTypes = append(connTypes, "udp", "tcp", "rpc", "rabbitmq")
 
 	args := os.Args[1:]
 	if len(args) == 1 {
@@ -112,15 +114,15 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 	rttMean := int64(0)
 	rttMutex := sync.Mutex{}
 
-	clientUDP, clientTCP, clientRPC := func() (*net.UDPConn, *net.TCPConn, *rpc.Client) {
+	clientUDP, clientTCP, clientRPC, consumerRabbitMQ := func() (*net.UDPConn, *net.TCPConn, *rpc.Client, *amqp.Connection) {
 		if connType == "udp" {
-			return src.ConnectUDPServer(8081), nil, nil
+			return src.ConnectUDPServer(8081), nil, nil, nil
 		} else if connType == "tcp" {
-			return nil, src.ConnectTCPServer(8082), nil
+			return nil, src.ConnectTCPServer(8082), nil, nil
 		} else if connType == "rpc" {
-			return nil, nil, src.ConnectGoRPCServer(8083)
+			return nil, nil, src.ConnectGoRPCServer(8083), nil
 		} else {
-			return nil, nil, nil
+			return nil, nil, nil, src.ConnectRabbitMQServer(5675)
 		}
 	}()
 	clientMutex := sync.Mutex{}
@@ -136,6 +138,9 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 		if clientRPC != nil {
 			clientRPC.Close()
 		}
+		if consumerRabbitMQ != nil {
+			consumerRabbitMQ.Close()
+		}
 	}()
 
 	URLsVisited.Append("https://scrapeme.live/shop/page/1/")
@@ -144,7 +149,7 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 
 	ch <- 1
 	wg.Add(1)
-	go src.Scrape("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &ch, &wg, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, &clientMutex)
+	go src.Scrape("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &ch, &wg, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, consumerRabbitMQ, &clientMutex)
 	//go src.Scrape("http://quotes.toscrape.com", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &wg)
 
 	wg.Wait()
@@ -156,7 +161,7 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 
 				ch <- 1
 				wg.Add(1)
-				go src.Scrape(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &ch, &wg, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, &clientMutex)
+				go src.Scrape(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &ch, &wg, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, consumerRabbitMQ, &clientMutex)
 			}
 		}
 		wg.Wait()
@@ -192,27 +197,32 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 	rttMean := int64(0)
 	rttMutex := sync.Mutex{}
 
-	clientUDP, clientTCP, clientRPC := func() (*net.UDPConn, *net.TCPConn, *rpc.Client) {
+	clientUDP, clientTCP, clientRPC, consumerRabbitMQ := func() (*net.UDPConn, *net.TCPConn, *rpc.Client, *amqp.Connection) {
 		if connType == "udp" {
-			return src.ConnectUDPServer(8081), nil, nil
+			return src.ConnectUDPServer(8081), nil, nil, nil
 		} else if connType == "tcp" {
-			return nil, src.ConnectTCPServer(8082), nil
+			return nil, src.ConnectTCPServer(8082), nil, nil
 		} else if connType == "rpc" {
-			return nil, nil, src.ConnectGoRPCServer(8083)
+			return nil, nil, src.ConnectGoRPCServer(8083), nil
 		} else {
-			return nil, nil, nil
+			return nil, nil, nil, src.ConnectRabbitMQServer(5675)
 		}
 	}()
 	clientMutex := sync.Mutex{}
-	defer func() {
+	func() {
 		if clientUDP != nil {
 			clientUDP.Close()
 		}
 		if clientTCP != nil {
 			clientTCP.Close()
 		}
+	}()
+	defer func() {
 		if clientRPC != nil {
 			clientRPC.Close()
+		}
+		if consumerRabbitMQ != nil {
+			consumerRabbitMQ.Close()
 		}
 	}()
 
@@ -220,7 +230,7 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 
 	start := time.Now()
 
-	src.ScrapeNC("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, &clientMutex)
+	src.ScrapeNC("https://scrapeme.live/shop/", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, consumerRabbitMQ, &clientMutex)
 	//src.ScrapeNC("http://quotes.toscrape.com", connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons)
 
 	//fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
@@ -233,7 +243,7 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 		if toVisit {
 			//fmt.Println("Visiting: ", nextURL)
 
-			src.ScrapeNC(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, &clientMutex)
+			src.ScrapeNC(nextURL, connType, &URLsToVisit, &URLsVisited, &quotes, &authors, &pokemons, &rttMutex, &rttMean, clientUDP, clientTCP, clientRPC, consumerRabbitMQ, &clientMutex)
 
 			//fmt.Println("Pages Visited: ", len(URLsVisited.Get()))
 			//fmt.Println("Pages To Visit: ", len(URLsToVisit.Get()))

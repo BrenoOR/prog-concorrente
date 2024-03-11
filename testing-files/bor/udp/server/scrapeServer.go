@@ -52,7 +52,7 @@ func main() {
 		case "rpc":
 			gorpcserver.RunGoRPC(8083, &db)
 		case "rabbitmq":
-			rabbitmqserver.RunRabbitMQ(5672, &db)
+			rabbitmqserver.RunRabbitMQ(5675, &db)
 		case "help":
 			fmt.Println("Connection types available are:", connTypes)
 		default:

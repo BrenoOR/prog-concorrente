@@ -102,10 +102,7 @@ func getPageGoRPC(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64
 	rttMutex.Unlock()
 }
 
-func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64) {
-	connRabbitMQ := ConnectRabbitMQServer(5672)
-	defer connRabbitMQ.Close()
-
+func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *int64, connRabbitMQ *amqp.Connection) {
 	chRabbitMQ, err := connRabbitMQ.Channel()
 	if err != nil {
 		log.Fatal(err)
@@ -115,8 +112,8 @@ func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *in
 	err = chRabbitMQ.ExchangeDeclare(
 		"pages", // name
 		"topic", // type
-		true,    // durable
-		false,   // auto-deleted
+		false,   // durable
+		true,    // auto-deleted
 		false,   // internal
 		false,   // no-wait
 		nil,     // arguments
@@ -161,30 +158,29 @@ func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *in
 		log.Fatal(err)
 	}
 
-	fmt.Println("Getting page:", page, "=> onqueue:", queue.Name)
+	//fmt.Println("Getting page:", page, "=> onqueue:", queue.Name)
 
-	wg := sync.WaitGroup{}
+	holdConn := make(chan int)
 
 	start := time.Now()
 
-	wg.Add(1)
-	go func(wg *sync.WaitGroup) {
+	go func(st *time.Time, ch *chan int) {
 		for d := range msg {
 			*res = d.Body
 
 			end := time.Now()
 
-			fmt.Println("Received page: ", page, " in ", end.Sub(start).Microseconds(), " microseconds.")
+			fmt.Println("Received page:", page, "in", end.Sub(*st).Microseconds(), "microseconds.")
 
 			rttMutex.Lock()
-			*rttMean += end.Sub(start).Microseconds()
+			*rttMean += end.Sub(*st).Microseconds()
 			rttMutex.Unlock()
+			*ch <- 1
 			break
 		}
-		wg.Done()
-	}(&wg)
+	}(&start, &holdConn)
 
-	wg.Wait()
+	<-holdConn
 }
 
 func ConnectUDPServer(port int) *net.UDPConn {

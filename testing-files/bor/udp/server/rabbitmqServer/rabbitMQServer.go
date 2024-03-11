@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"scrapeServer/commons"
+	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -13,16 +14,6 @@ import (
 func RunRabbitMQ(port int, db *commons.DataBase) {
 	database := *db
 
-	for {
-		for k, v := range database.Pages {
-			publishPageToRabbitMQ(port, k, v)
-		}
-		fmt.Println("[", time.Now().Format(time.RFC822), "] All pages published to RabbitMQ.")
-		time.Sleep(time.Second * 30)
-	}
-}
-
-func publishPageToRabbitMQ(port int, url string, page_content []byte) {
 	rabbitMQServer, err := amqp.Dial(fmt.Sprint("amqp://guest:guest@localhost:", port, "/"))
 	if err != nil {
 		log.Fatal("Failed to connect to RabbitMQ at ", fmt.Sprint("amqp://guest:guest@localhost:", port, "/"), " => ", err)
@@ -38,20 +29,50 @@ func publishPageToRabbitMQ(port int, url string, page_content []byte) {
 	err = rabbitMQChannel.ExchangeDeclare(
 		"pages", // name
 		"topic", // type
-		true,    // durable
-		false,   // auto-deleted
+		false,   // durable
+		true,    // auto-deleted
 		false,   // internal
 		false,   // no-wait
 		nil,     // arguments
 	)
 	if err != nil {
-		log.Fatal("Failed to declare an exchange", err)
+		log.Fatal("Failed to declare an exchange => ", err)
 	}
+
+	wg := sync.WaitGroup{}
+	for {
+		for k, v := range database.Pages {
+			if rabbitMQChannel.IsClosed() {
+				err = rabbitMQChannel.ExchangeDeclare(
+					"pages", // name
+					"topic", // type
+					false,   // durable
+					true,    // auto-deleted
+					false,   // internal
+					false,   // no-wait
+					nil,     // arguments
+				)
+				if err != nil {
+					log.Fatal("Failed to declare an exchange => ", err)
+				}
+			}
+			wg.Add(1)
+			go publishPageToRabbitMQ(rabbitMQChannel, k, v, &wg)
+			time.Sleep(time.Millisecond * 10)
+		}
+		wg.Wait()
+		fmt.Println("[", time.Now().Format(time.RFC822), "] All pages published to RabbitMQ.")
+		time.Sleep(time.Millisecond * 100)
+	}
+}
+
+func publishPageToRabbitMQ(rabbitMQChannel *amqp.Channel, url string, page_content []byte, wg *sync.WaitGroup) {
+	defer wg.Done()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	err = rabbitMQChannel.PublishWithContext(ctx,
+	err := rabbitMQChannel.PublishWithContext(ctx,
 		"pages", // exchange
 		url,     // routing key (url)
 		false,   // mandatory
@@ -61,6 +82,6 @@ func publishPageToRabbitMQ(port int, url string, page_content []byte) {
 			Body:        page_content,
 		})
 	if err != nil {
-		log.Fatal("Failed to publish a message", err)
+		log.Fatal("Failed to publish a message => ", err)
 	}
 }
