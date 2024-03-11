@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log"
 	"scrapeServer/commons"
-	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func RunRabbitMQ(port int, db *commons.DataBase) {
+
 	database := *db
 
 	rabbitMQServer, err := amqp.Dial(fmt.Sprint("amqp://guest:guest@localhost:", port, "/"))
@@ -39,36 +39,54 @@ func RunRabbitMQ(port int, db *commons.DataBase) {
 		log.Fatal("Failed to declare an exchange => ", err)
 	}
 
-	wg := sync.WaitGroup{}
-	for {
-		for k, v := range database.Pages {
-			if rabbitMQChannel.IsClosed() {
-				err = rabbitMQChannel.ExchangeDeclare(
-					"pages", // name
-					"topic", // type
-					false,   // durable
-					true,    // auto-deleted
-					false,   // internal
-					false,   // no-wait
-					nil,     // arguments
-				)
-				if err != nil {
-					log.Fatal("Failed to declare an exchange => ", err)
-				}
-			}
-			wg.Add(1)
-			go publishPageToRabbitMQ(rabbitMQChannel, k, v, &wg)
-			time.Sleep(time.Millisecond * 10)
-		}
-		wg.Wait()
-		fmt.Println("[", time.Now().Format(time.RFC822), "] All pages published to RabbitMQ.")
-		time.Sleep(time.Millisecond * 100)
+	queue, err := rabbitMQChannel.QueueDeclare(
+		"requests", // name
+		false,      // durable
+		false,      // delete when unused
+		true,       // exclusive
+		false,      // no-wait
+		nil,        // arguments
+	)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	err = rabbitMQChannel.QueueBind(
+		queue.Name, // queue name
+		"requests", // routing key
+		"pages",    // exchange
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msg, err := rabbitMQChannel.Consume(
+		queue.Name, // queue
+		"",         // consumer
+		true,       // auto-ack
+		false,      // exclusive
+		false,      // no-local
+		false,      // no-wait
+		nil,        // args
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	holdConn := make(chan int)
+
+	go func() {
+		for d := range msg {
+			go publishPageToRabbitMQ(rabbitMQChannel, string(d.Body), database.Pages[string(d.Body)])
+		}
+	}()
+
+	<-holdConn
 }
 
-func publishPageToRabbitMQ(rabbitMQChannel *amqp.Channel, url string, page_content []byte, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func publishPageToRabbitMQ(rabbitMQChannel *amqp.Channel, url string, page_content []byte) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
@@ -84,4 +102,6 @@ func publishPageToRabbitMQ(rabbitMQChannel *amqp.Channel, url string, page_conte
 	if err != nil {
 		log.Fatal("Failed to publish a message => ", err)
 	}
+
+	fmt.Println("Published page", url, "to RabbitMQ.")
 }

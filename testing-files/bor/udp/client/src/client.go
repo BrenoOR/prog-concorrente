@@ -2,6 +2,7 @@ package src
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -144,6 +145,24 @@ func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *in
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+
+	err = chRabbitMQ.PublishWithContext(ctx,
+		"pages",    // exchange
+		"requests", // routing key
+		false,      // mandatory
+		false,      // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(page),
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cancel()
 
 	msg, err := chRabbitMQ.Consume(
 		queue.Name, // queue

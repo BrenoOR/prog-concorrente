@@ -32,7 +32,7 @@ func printProgressBar(it int, total int, trialMean int64, rttMean int64, trialNC
 }
 
 func main() {
-	totalTrials := 1
+	totalTrials := 10
 	trialTotal := int64(0)
 	rttTotal := int64(0)
 	trialNCTotal := int64(0)
@@ -122,7 +122,7 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 		} else if connType == "rpc" {
 			return nil, nil, src.ConnectGoRPCServer(8083), nil
 		} else {
-			return nil, nil, nil, src.ConnectRabbitMQServer(5675)
+			return nil, nil, nil, src.ConnectRabbitMQServer(8084)
 		}
 	}()
 	clientMutex := sync.Mutex{}
@@ -182,7 +182,7 @@ func scrapeTrial(trial int, connType string) (int64, int64) {
 	//fmt.Println("Quotes: ", len(quotes.Get()))
 	//fmt.Println("Authors: ", len(authors.Get()))
 
-	fmt.Println("Elapsed time of trial", trial, ": ", elapsed.Microseconds(), "µs")
+	//fmt.Println("Elapsed time of trial", trial, ": ", elapsed.Microseconds(), "µs")
 
 	return elapsed.Microseconds(), rttMean
 }
@@ -205,7 +205,7 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 		} else if connType == "rpc" {
 			return nil, nil, src.ConnectGoRPCServer(8083), nil
 		} else {
-			return nil, nil, nil, src.ConnectRabbitMQServer(5675)
+			return nil, nil, nil, src.ConnectRabbitMQServer(8084)
 		}
 	}()
 	clientMutex := sync.Mutex{}
@@ -261,7 +261,7 @@ func scrapeTrialNC(trial int, connType string) (int64, int64) {
 	//fmt.Println("Quotes: ", len(quotes.Get()))
 	//fmt.Println("Authors: ", len(authors.Get()))
 
-	fmt.Println("Elapsed time of trial", trial, ": ", elapsed.Microseconds(), "µs")
+	//fmt.Println("Elapsed time of trial", trial, ": ", elapsed.Microseconds(), "µs")
 
 	return elapsed.Microseconds(), rttMean
 }

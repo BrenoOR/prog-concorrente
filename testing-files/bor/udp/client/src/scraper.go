@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"net/rpc"
-	"strings"
 	"sync"
 
 	"github.com/PuerkitoBio/goquery"
@@ -360,9 +359,9 @@ func Scrape(url string, connType string, URLsToVisit *Slice_CS, URLsVisited *Sli
 		p.Info = pInfo
 
 		if pInfo.Name != "" && !pokemons.Contains(p) {
-			if strings.Contains(url, pInfo.Name) {
-				fmt.Println("Appending valid:", pInfo.Name)
-			}
+			//if strings.Contains(url, pInfo.Name) {
+			//	fmt.Println("Appending valid:", pInfo.Name)
+			//}
 			pokemons.Append(p)
 		}
 	})
