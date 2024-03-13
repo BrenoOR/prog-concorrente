@@ -15,7 +15,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func printProgressBar(it int, total int, trialMean int64, rttMean int64, trialNCMean int64, rttNCMean int64) {
+func printProgressBar(it int, total int, trialMean int64, rttMean int64) {
 	percentage := float64(it) / float64(total) * 100
 	filledLength := int(50 * it / total)
 	end := ">"
@@ -25,18 +25,18 @@ func printProgressBar(it int, total int, trialMean int64, rttMean int64, trialNC
 	}
 
 	bar := strings.Repeat("=", filledLength) + end + strings.Repeat(" ", 50-filledLength)
-	fmt.Printf("\r[%s] %.2f%% [Means (ms): %d | %d | %d | %d]", bar, percentage, trialMean, rttMean, trialNCMean, rttNCMean)
+	fmt.Printf("\r[%s] %.2f%% [Means (ms): %d | %d]", bar, percentage, trialMean, rttMean)
 	if it == total {
 		fmt.Println()
 	}
 }
 
 func main() {
-	totalTrials := 10
+	totalTrials := 500
 	trialTotal := int64(0)
 	rttTotal := int64(0)
-	trialNCTotal := int64(0)
-	rttNCTotal := int64(0)
+	//trialNCTotal := int64(0)
+	//rttNCTotal := int64(0)
 
 	connType := ""
 	connTypes := make([]string, 0)
@@ -75,15 +75,16 @@ func main() {
 	writer := csv.NewWriter(data)
 	defer writer.Flush()
 
-	headers := []string{"Trial", strings.ToUpper(connType), "Mean RTT (" + strings.ToUpper(connType) + ")", strings.ToUpper(connType) + " (No Concurrency)", "Mean RTT (" + strings.ToUpper(connType) + "NC)"}
+	headers := []string{"Trial", strings.ToUpper(connType), "Mean RTT (" + strings.ToUpper(connType) + ")"}
 	writer.Write(headers)
 
 	for i := 0; i < totalTrials; i++ {
 		trialID := i + 1
 		trial, rtt := scrapeTrial(trialID, connType)
-		trialNC, rttNC := scrapeTrialNC(trialID, connType)
+		//trialNC, rttNC := scrapeTrialNC(trialID, connType)
 
-		row := []int64{int64(trialID), trial, rtt, trialNC, rttNC}
+		//row := []int64{int64(trialID), trial, rtt, trialNC, rttNC}
+		row := []int64{int64(trialID), trial, rtt}
 
 		strRow := []string{}
 		for _, cell := range row {
@@ -93,10 +94,11 @@ func main() {
 
 		trialTotal += trial
 		rttTotal += rtt
-		trialNCTotal += trialNC
-		rttNCTotal += rttNC
+		//trialNCTotal += trialNC
+		//rttNCTotal += rttNC
 
-		printProgressBar(i+1, totalTrials, trialTotal/int64(trialID), rttTotal/int64(trialID), trialNCTotal/int64(trialID), rttNCTotal/int64(trialID))
+		//printProgressBar(i+1, totalTrials, trialTotal/int64(trialID), rttTotal/int64(trialID), trialNCTotal/int64(trialID), rttNCTotal/int64(trialID))
+		printProgressBar(i+1, totalTrials, trialTotal/int64(trialID), rttTotal/int64(trialID))
 		time.Sleep(100 * time.Millisecond)
 	}
 }

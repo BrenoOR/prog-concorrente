@@ -148,18 +148,20 @@ func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *in
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 
-	err = chRabbitMQ.PublishWithContext(ctx,
-		"pages",    // exchange
-		"requests", // routing key
-		false,      // mandatory
-		false,      // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        []byte(page),
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
+	for i := 0; i < 3; i++ {
+		err = chRabbitMQ.PublishWithContext(ctx,
+			"pages",    // exchange
+			"requests", // routing key
+			false,      // mandatory
+			false,      // immediate
+			amqp.Publishing{
+				ContentType: "text/plain",
+				Body:        []byte(page),
+			},
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	cancel()
@@ -179,27 +181,28 @@ func getPageRabbitMQ(page string, res *[]byte, rttMutex *sync.Mutex, rttMean *in
 
 	//fmt.Println("Getting page:", page, "=> onqueue:", queue.Name)
 
-	holdConn := make(chan int)
+	holdConn := sync.WaitGroup{}
 
 	start := time.Now()
-
-	go func(st *time.Time, ch *chan int) {
+	holdConn.Add(1)
+	go func(st *time.Time, wg *sync.WaitGroup) {
+		defer wg.Done()
 		for d := range msg {
 			*res = d.Body
 
 			end := time.Now()
 
-			fmt.Println("Received page:", page, "in", end.Sub(*st).Microseconds(), "microseconds.")
+			//fmt.Println("Received page:", page, "in", end.Sub(*st).Microseconds(), "microseconds.")
 
 			rttMutex.Lock()
 			*rttMean += end.Sub(*st).Microseconds()
 			rttMutex.Unlock()
-			*ch <- 1
+
 			break
 		}
 	}(&start, &holdConn)
 
-	<-holdConn
+	holdConn.Wait()
 }
 
 func ConnectUDPServer(port int) *net.UDPConn {

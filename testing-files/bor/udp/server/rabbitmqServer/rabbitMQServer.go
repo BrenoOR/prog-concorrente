@@ -11,21 +11,23 @@ import (
 )
 
 func RunRabbitMQ(port int, db *commons.DataBase) {
-
 	database := *db
 
+	// Connect to Broker
 	rabbitMQServer, err := amqp.Dial(fmt.Sprint("amqp://guest:guest@localhost:", port, "/"))
 	if err != nil {
 		log.Fatal("Failed to connect to RabbitMQ at ", fmt.Sprint("amqp://guest:guest@localhost:", port, "/"), " => ", err)
 	}
 	defer rabbitMQServer.Close()
 
+	// Open a channel
 	rabbitMQChannel, err := rabbitMQServer.Channel()
 	if err != nil {
 		log.Fatal("Failed to open a channel", err)
 	}
 	defer rabbitMQChannel.Close()
 
+	// Declare an exchange
 	err = rabbitMQChannel.ExchangeDeclare(
 		"pages", // name
 		"topic", // type
@@ -39,6 +41,7 @@ func RunRabbitMQ(port int, db *commons.DataBase) {
 		log.Fatal("Failed to declare an exchange => ", err)
 	}
 
+	// Declare and bind a queue to receive requests
 	queue, err := rabbitMQChannel.QueueDeclare(
 		"requests", // name
 		false,      // durable
@@ -90,18 +93,20 @@ func publishPageToRabbitMQ(rabbitMQChannel *amqp.Channel, url string, page_conte
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	err := rabbitMQChannel.PublishWithContext(ctx,
-		"pages", // exchange
-		url,     // routing key (url)
-		false,   // mandatory
-		false,   // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        page_content,
-		})
-	if err != nil {
-		log.Fatal("Failed to publish a message => ", err)
+	for i := 0; i < 3; i++ {
+		err := rabbitMQChannel.PublishWithContext(ctx,
+			"pages", // exchange
+			url,     // routing key (url)
+			false,   // mandatory
+			false,   // immediate
+			amqp.Publishing{
+				ContentType: "text/plain",
+				Body:        page_content,
+			})
+		if err != nil {
+			log.Fatal("Failed to publish a message => ", err)
+		}
 	}
 
-	fmt.Println("Published page", url, "to RabbitMQ.")
+	//fmt.Println("Published page", url, "to RabbitMQ.")
 }
